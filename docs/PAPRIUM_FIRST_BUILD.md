@@ -5,7 +5,7 @@
 This build tests the minimum real-cartridge architecture needed to reach the
 Paprium legal screen on the standalone Mega Drive core.
 
-It is not an audio or gameplay-complete build.
+It is not a CDDA or gameplay-complete build.
 
 ## Included
 
@@ -26,10 +26,14 @@ It is not an audio or gameplay-complete build.
 ## Deliberately Excluded
 
 - Native MD+ command adapter.
-- Background music.
-- Paprium SFX engine.
+- Replacement CDDA background music.
+- Paprium proprietary cartridge audio, which is out of scope.
 - Persistent backup-memory integration.
 - Debug overlay and MegaCD subsystem.
+
+Normal Mega Drive YM2612 and PSG audio remains available. The intended audio
+workaround is CDDA playback through the core's native MD+ implementation; this
+fork does not target Paprium's proprietary cartridge audio hardware.
 
 ## First Test
 
@@ -80,8 +84,8 @@ Focus on the writable-ROM patch, mailbox mapping, and stream-pointer behavior.
 
 ### Legal screen appears and then execution stalls
 
-Focus on the first mailbox command and workspace streaming. Audio remains
-intentionally silent and should not be treated as the cause.
+Focus on the first mailbox command and workspace streaming. Replacement CDDA
+remains unavailable and should not be treated as the cause.
 
 ## Architecture Rule
 

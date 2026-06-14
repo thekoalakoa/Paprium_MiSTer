@@ -63,15 +63,13 @@ Port from the existing Paprium work:
 - Backup RAM behavior.
 - MCU work RAM as on-chip block RAM.
 
-Port later, after boot and gameplay:
-
-- Paprium SFX engine from `mega-ppm-main/fpga/audio_sfx.sv`.
-
 Do not port:
 
 - MegaCD subsystem.
 - EverDrive SPI/FIFO protocol.
 - `mega-ppm` MD+ PCM engine; use the core's native MD+ implementation.
+- Paprium proprietary SFX/audio engine. It is out of scope; replacement
+  background music uses CDDA through the native MD+ implementation.
 
 ## Proposed Memory Layout
 
@@ -187,8 +185,7 @@ No broader conversion from MD-MSU to MD+ is expected.
 5. Confirm legal screen and first 68000-to-MCU mailbox command.
 6. Connect MCU BGM commands to the native MD+ engine.
 7. Add save-memory behavior.
-8. Add Paprium SFX engine.
-9. Remove temporary diagnostics and validate reset/save/audio behavior.
+8. Remove temporary diagnostics and validate reset/save/CDDA behavior.
 
 ## Main Risks
 
@@ -196,7 +193,6 @@ No broader conversion from MD-MSU to MD+ is expected.
 - Correctly integrating Paprium's streaming window with VDP DMA behavior.
 - Ensuring MCU writes to SDRAM-backed flash complete exactly once.
 - HPS-side MD+ track-file naming/mount expectations.
-- SFX engine resource use and audio mixing levels.
 
 ## Difficulty Estimate
 
@@ -205,8 +201,6 @@ than the current MegaCD integration.
 
 Adding BGM through native MD+: low-to-medium once MCU communication works.
 
-Adding full Paprium SFX behavior: medium-to-high and separable from boot.
-
 The recommended next milestone is a Mega Drive-core build that shows the legal
-screen and records the first valid 68000 mailbox command. Music and SFX should
-not be on that milestone's critical path.
+screen and records the first valid 68000 mailbox command. Replacement CDDA
+should not be on that milestone's critical path.
