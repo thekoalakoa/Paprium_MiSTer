@@ -347,6 +347,9 @@ wire loading = cart_download | bk_loading | RESET;
 reg        btn_reset;
 reg        md_reset;
 reg        s_reset;
+wire       paprium_active;
+wire       paprium_md_reset;
+wire       md_reset_effective = md_reset | (paprium_active & paprium_md_reset);
 reg [15:1] ram_rst_a;
 always @(posedge clk_md) begin
 	reg [4:0] cnt = 0;
@@ -467,10 +470,14 @@ wire  [7:0] ram_z80_o;
 wire [15:0] tmss_data;
 wire  [9:0] tmss_address;
 
+`ifdef M68K_CHEAT
 wire [23:1] m68k_addr;
 wire [15:0] m68k_bus_do;
+`endif
+`ifdef Z80_CHEAT
 wire [15:0] z80_addr;
 wire  [7:0] z80_bus_do;
+`endif
 
 reg         dma_68k_req;
 reg         dma_z80_req;
@@ -483,7 +490,7 @@ md_board md_board
 (
 	.MCLK2(clk_md),
 
-	.ext_reset(md_reset),
+	.ext_reset(md_reset_effective),
 	.reset_button(btn_reset), // edge triggered, requires some activity time to get detected.
 
 	// ram
@@ -498,12 +505,16 @@ md_board md_board
 	.ram_z80_o(ram_z80_o),
 
 	// cheat engine
+`ifdef M68K_CHEAT
 	.m68k_addr(m68k_addr),
 	.m68k_bus_do(m68k_bus_do),
 	.m68k_di(m68k_data),
+`endif
+`ifdef Z80_CHEAT
 	.z80_addr(z80_addr),
 	.z80_bus_do(z80_bus_do),
 	.z80_di(z80_data),
+`endif
 
 	.tmss_enable(tmss_enable & tmss_loaded),
 	.tmss_data(tmss_data),
@@ -681,6 +692,8 @@ cartridge cartridge
 	.gun_sensor_delay(gun_sensor_delay),
 
 	.ym2612_quirk(ym2612_quirk),
+	.paprium_active(paprium_active),
+	.paprium_md_reset(paprium_md_reset),
 
 	.fm_en(~status[60]),
 	.fm_audio(sms_fm_audio)
@@ -1266,9 +1279,23 @@ end
 
 ///////////////////////////////////////////////////
 // Cheat codes loading for WIDE IO (16 bit)
-reg [128:0] gg_code;
-wire        gg_available;
+`ifdef M68K_CHEAT
+`define MD_ANY_CHEAT
+`endif
+`ifdef Z80_CHEAT
+`define MD_ANY_CHEAT
+`endif
 
+`ifdef MD_ANY_CHEAT
+reg [128:0] gg_code;
+`endif
+`ifdef M68K_CHEAT
+wire        gg_available;
+`else
+wire        gg_available = 1'b0;
+`endif
+
+`ifdef MD_ANY_CHEAT
 // Code layout:
 // {clock bit, code flags,     32'b address, 32'b compare, 32'b replace}
 //  128        127:96          95:64         63:32         31:0
@@ -1294,36 +1321,45 @@ always_ff @(posedge clk_sys) begin
 		endcase
 	end
 end
+`endif
 
-reg [15:0] m68k_data;
-always @(posedge clk_md) m68k_data <= m68k_genie_data;
+`ifdef M68K_CHEAT
+	reg [15:0] m68k_data;
+	always @(posedge clk_md) m68k_data <= m68k_genie_data;
 
-wire [15:0] m68k_genie_data;
-CODES #(.ADDR_WIDTH(24), .DATA_WIDTH(16), .BIG_ENDIAN(1)) codes_68k
-(
-	.clk(clk_sys),
-	.reset(cart_download | (code_download && ioctl_wr && !ioctl_addr)),
-	.enable(~status[24] & ~cart_ms),
-	.code(gg_code),
-	.available(gg_available),
-	.addr_in({m68k_addr, 1'b0}),
-	.data_in(m68k_bus_do),
-	.data_out(m68k_genie_data)
-);
+	wire [15:0] m68k_genie_data;
+	CODES #(.ADDR_WIDTH(24), .DATA_WIDTH(16), .BIG_ENDIAN(1)) codes_68k
+	(
+		.clk(clk_sys),
+		.reset(cart_download | (code_download && ioctl_wr && !ioctl_addr)),
+		.enable(~status[24] & ~cart_ms),
+		.code(gg_code),
+		.available(gg_available),
+		.addr_in({m68k_addr, 1'b0}),
+		.data_in(m68k_bus_do),
+		.data_out(m68k_genie_data)
+	);
+`endif
 
-reg [7:0] z80_data;
-always @(posedge clk_md) z80_data <= z80_genie_data;
+`ifdef Z80_CHEAT
+	reg [7:0] z80_data;
+	always @(posedge clk_md) z80_data <= z80_genie_data;
 
-wire [7:0] z80_genie_data;
-CODES #(.ADDR_WIDTH(16), .DATA_WIDTH(8)) codes_z80
-(
-	.clk(clk_sys),
-	.reset(cart_download | (code_download && ioctl_wr && !ioctl_addr)),
-	.enable(~status[24] & cart_ms),
-	.code(gg_code),
-	.addr_in(z80_addr),
-	.data_in(z80_bus_do),
-	.data_out(z80_genie_data)
-);
+	wire [7:0] z80_genie_data;
+	CODES #(.ADDR_WIDTH(16), .DATA_WIDTH(8)) codes_z80
+	(
+		.clk(clk_sys),
+		.reset(cart_download | (code_download && ioctl_wr && !ioctl_addr)),
+		.enable(~status[24] & cart_ms),
+		.code(gg_code),
+		.addr_in(z80_addr),
+		.data_in(z80_bus_do),
+		.data_out(z80_genie_data)
+	);
+`endif
+
+`ifdef MD_ANY_CHEAT
+`undef MD_ANY_CHEAT
+`endif
 
 endmodule

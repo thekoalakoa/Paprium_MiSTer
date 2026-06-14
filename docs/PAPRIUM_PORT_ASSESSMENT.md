@@ -80,7 +80,7 @@ Use one physical MiSTer SDRAM with logical regions:
 | Region | Proposed SDRAM word base | Size | Users |
 |---|---:|---:|---|
 | Paprium flash/ROM | `0x000000` | 8 MiB | 68000/VDP/Z80 + MCU |
-| Paprium workspace | `0x480000` | 2 MiB | 68000 + MCU |
+| Paprium workspace | `0x400000` | 2 MiB | 68000 + MCU |
 | Backup RAM | on-chip/save path | 8 KiB | MCU/HPS |
 | MCU work RAM | on-chip block RAM | required firmware size | MCU |
 | 68000/MCU mailbox | on-chip dual-port RAM | 8 KiB | 68000 + MCU |

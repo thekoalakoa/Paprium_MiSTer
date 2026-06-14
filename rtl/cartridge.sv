@@ -69,6 +69,8 @@ module cartridge
 	output reg  [7:0] gun_sensor_delay,
 
 	output            ym2612_quirk,
+	output            paprium_active,
+	output            paprium_md_reset,
 
 	input             fm_en,
 	output     [13:0] fm_audio,
@@ -98,12 +100,12 @@ sdram sdram
 	.req1(rom_req),
 	.ack1(rom_ack),
 
-	.addr2(rom2_a),
-	.din2(0),
+	.addr2(paprium_quirk ? paprium_mem_addr : {{4{1'b0}},rom2_a}),
+	.din2(paprium_quirk ? paprium_mem_din : 16'd0),
 	.dout2(rom2_data),
-	.wrl2(0),
-	.wrh2(0),
-	.req2(rom2_req),
+	.wrl2(paprium_quirk & paprium_mem_wrl),
+	.wrh2(paprium_quirk & paprium_mem_wrh),
+	.req2(paprium_quirk ? paprium_mem_req : rom2_req),
 	.ack2(rom2_ack)
 );
 
@@ -158,7 +160,7 @@ assign cart_data_en = cart_oe & (cart_cs | svp_cs | data_en);
 reg data_en;
 always @(posedge clk_ram) data_en <= ms_rom_cs | ms_ram_cs | fm_det_cs | pier_eeprom_cs | cart_cs_ext | sf_cs | chk_cs;
 
-wire rom_data_req = cart_cs | ms_rom_cs | cart_cs_ext;
+wire rom_data_req = (cart_cs & ~paprium_mailbox_cs) | ms_rom_cs | cart_cs_ext;
 wire sdram_rd     = cart_oe;
 
 reg  [24:1] rom_addr;
@@ -184,9 +186,11 @@ always @(posedge clk_ram) begin
 	we_old <= rom_we;
 	rd_old <= sdram_rd & rom_data_req;
 	if((~rd_old & sdram_rd & rom_data_req) || (~we_old & rom_we)) begin
-		rom_addr <= (cart_ms ? ms_cart_addr : md_cart_addr) & rom_mask[24:1];
+		rom_addr <= paprium_stream_cs ? paprium_stream_addr :
+		            (cart_ms ? ms_cart_addr : md_cart_addr) & rom_mask[24:1];
 		rom_req <= ~rom_req;
 		rom_rd <= sdram_rd;
+		paprium_stream_pending <= paprium_stream_cs & sdram_rd;
 	end
 
 	if(ms_boot_cs)     cart_data <= ms_boot_data;
@@ -200,6 +204,7 @@ always @(posedge clk_ram) begin
 	if(svp_cs)         cart_data <= svp_data;
 	if(sf_cs)          cart_data <= sf_data;
 	if(chk_cs)         cart_data <= chk_data;
+	if(paprium_mailbox_cs) cart_data <= paprium_cart_data;
 end
 
 wire [16:0] sram_addr;
@@ -320,6 +325,47 @@ wire [20:1] rom2_a;
 wire [15:0] rom2_data;
 wire        rom2_req;
 wire        rom2_ack;
+
+wire [15:0] paprium_cart_data;
+wire        paprium_mailbox_cs;
+wire        paprium_stream_cs;
+wire [24:1] paprium_stream_addr;
+wire [24:1] paprium_mem_addr;
+wire [15:0] paprium_mem_din;
+wire        paprium_mem_wrl;
+wire        paprium_mem_wrh;
+wire        paprium_mem_req;
+reg         paprium_stream_pending = 0;
+
+wire paprium_stream_read_ack = paprium_stream_pending & rom_rd & (rom_req == rom_ack);
+assign paprium_active = paprium_quirk;
+
+paprium_cart paprium
+(
+	.clk(clk),
+	.reset(reset),
+	.enable(paprium_quirk),
+	.cart_addr(cart_addr),
+	.cart_data_wr(cart_data_wr),
+	.cart_cs(cart_cs),
+	.cart_oe(cart_oe),
+	.cart_lwr(cart_lwr),
+	.cart_uwr(cart_uwr),
+	.cart_time(cart_time),
+	.stream_read_ack(paprium_stream_read_ack),
+	.cart_data(paprium_cart_data),
+	.mailbox_cs(paprium_mailbox_cs),
+	.stream_cs(paprium_stream_cs),
+	.stream_addr(paprium_stream_addr),
+	.md_reset(paprium_md_reset),
+	.mem_addr(paprium_mem_addr),
+	.mem_din(paprium_mem_din),
+	.mem_dout(rom2_data),
+	.mem_wrl(paprium_mem_wrl),
+	.mem_wrh(paprium_mem_wrh),
+	.mem_req(paprium_mem_req),
+	.mem_ack(rom2_ack)
+);
 
 wire [15:0] svp_data;
 wire        svp_dtack_n;
@@ -474,7 +520,7 @@ wire pier_eeprom_cs = pier_quirk && cart_time && cart_addr[3:1] == 'h5;
 wire [15:0] pier_eeprom_data = {15'h7FFF, m95_so};
 
 // Sega Channel, 4MB RAM used as ROM
-wire rom_we = (cart_lwr || cart_uwr) && !cart_addr[23:22] && ~rom_prot;
+wire rom_we = (cart_lwr || cart_uwr) && !cart_addr[23:22] && ~rom_prot && ~paprium_mailbox_cs;
 
 reg rom_prot;
 always @(posedge clk) begin
@@ -778,7 +824,7 @@ end
 
 //---------------------- Cart detect ---------------------------------------
 
-reg       sram00_quirk, fmbusy_quirk, noram_quirk, pier_quirk, svp_quirk, schan_quirk;
+reg       sram00_quirk, fmbusy_quirk, noram_quirk, pier_quirk, svp_quirk, schan_quirk, paprium_quirk;
 reg [3:0] eeprom_quirk;
 reg       realtec_quirk;
 reg [2:0] sf_quirk;
@@ -794,7 +840,7 @@ always @(posedge clk) begin
 	old_dl <= cart_dl;
 
 	if(~old_dl && cart_dl) begin
-		{sram00_quirk,fmbusy_quirk,noram_quirk,pier_quirk,svp_quirk,schan_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
+		{sram00_quirk,fmbusy_quirk,noram_quirk,pier_quirk,svp_quirk,schan_quirk,paprium_quirk,eeprom_quirk,realtec_quirk,sf_quirk,chk_quirk} <= '0;
 		gun_type <= 0;
 		gun_sensor_delay <= 8'd44;
 		crc_real <= 0;
@@ -812,6 +858,8 @@ always @(posedge clk) begin
 		if(cart_dl_addr == 'h18A) cart_id[07:00] <= cart_dl_data[7:0];
 		if(cart_dl_addr == 'h18E) crc <= {cart_dl_data[7:0],cart_dl_data[15:8]};
 		if(cart_dl_addr == 'h190) begin
+			     if(cart_id[87:0] == "GM T-574120") paprium_quirk <= 1;
+			else
 			     if(cart_id[63:0] == "T-50446 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93
 			else if(cart_id[63:0] == "T-50516 ") eeprom_quirk <= 4'b0001;  // X24C01 John Madden Football 93 Championship Edition
 			else if(cart_id[63:0] == "T-50396 ") eeprom_quirk <= 4'b0001;  // X24C01 NHLPA Hockey 93
