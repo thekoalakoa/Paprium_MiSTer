@@ -1,10 +1,15 @@
 # Paprium on the MiSTer Mega Drive core
 
-Runs the original **Paprium** cartridge (WaterMelon) — including its NEORV32
-RISC-V coprocessor — on the MiSTer FPGA Mega Drive core. Hardware-verified on
-DE10-Nano: it boots, renders correctly, plays CDDA background music, and plays
-the full per-channel cartridge sound effects. The SVP chip (Virtua Racing) is
-retained.
+> **This is a hacky way to *experience* Paprium (WaterMelon) on MiSTer — not a
+> faithful reproduction of the cartridge.** Paprium's custom **DATENMEISTER**
+> chipset is not reproduced. This port takes the same approach as the **EverDrive
+> Pro** workaround: it runs the `mega-ppm` replacement MCU firmware and uses
+> **MD+ CDDA for the music** instead of the original **DT128M16VA1LT** chipset.
+> Think of it as "Paprium, EverDrive-Pro style, on MiSTer."
+
+With that understood, it is hardware-verified on DE10-Nano: it boots, renders
+correctly, plays CDDA background music, and plays the full per-channel cartridge
+sound effects. The SVP chip (Virtua Racing) is retained.
 
 ## How it works
 
