@@ -26,10 +26,11 @@ If only there were some kind of archive on the internet...
 
 Create this folder on your MiSTer SD card:
 
-```text
-/media/fat/games/MegaDrive/Paprium/
+`/media/fat/games/MegaDrive/Paprium/`
+
 Place the ROM and WAV files there:
 
+```text
 ├── Paprium.md
 ├── paprium.cue
 ├── 01 Theme of Paprium.wav
@@ -39,6 +40,7 @@ Place the ROM and WAV files there:
 ├── 05 Asian Chill.wav
 ├── ...
 └── 52 Waterfront Beat.wav
+```
 Load Paprium.md from the Mega Drive Paprium core.
 
 **You need to boot the game once and select "Save back up ram" in the OSD the first time you play - Then hit reset in the OSD to get the REAL version of paprium to boot** 
