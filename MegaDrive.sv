@@ -129,6 +129,7 @@ localparam CONF_STR = {
 
 	"-;",
 	"O[61],Pause When OSD is Open,No,Yes;",
+	"O[59],Paprium Debug (DDR/no audio),Off,On;",
 	"R[0],Reset;",
 	"J1,A,B,C,Start,Mode,X,Y,Z;",
 	"jn,A,B,R,Start,Select,X,Y,L;", // name map to SNES layout.
@@ -413,7 +414,7 @@ wire        PAL = status[7];
 wire        JAP = !status[7:6];
 
 wire [23:1] cart_addr;
-wire        cart_cs, cart_oe, cart_lwr, cart_uwr, cart_time, cart_dma;
+wire        cart_cs, cart_oe_raw, cart_oe_early, cart_lwr, cart_uwr, cart_time, cart_dma;
 wire [15:0] cart_data_wr;
 
 // Cartridge module outputs (before MD+ overlay mux)
@@ -427,14 +428,40 @@ wire [15:0] mdp_data_out;
 wire        mdp_dtack;
 wire        mdp_active;
 wire [15:0] mdp_last_cmd;
-wire        mdp_track_request;
-wire  [7:0] mdp_track_num;
-wire        mdp_track_loop;
-wire        mdp_stop_request;
-wire  [7:0] mdp_fade_sectors;
-wire        mdp_resume_request;
-wire  [7:0] mdp_volume;
-wire        mdp_volume_request;
+// MD+ command signals, muxed between the 68k path (md_plus -> mdplus_*) and the
+// Paprium MCU path (cartridge adapter -> ppm_*). Consumed by hps_ext + mdp_audio.
+wire        mdplus_mdp_track_request,  ppm_mdp_track_request;
+wire  [7:0] mdplus_mdp_track_num,      ppm_mdp_track_num;
+wire        mdplus_mdp_track_loop,     ppm_mdp_track_loop;
+wire        mdplus_mdp_stop_request,   ppm_mdp_stop_request;
+wire  [7:0] mdplus_mdp_fade_sectors,   ppm_mdp_fade_sectors;
+wire        mdplus_mdp_resume_request, ppm_mdp_resume_request;
+wire  [7:0] mdplus_mdp_volume,         ppm_mdp_volume;
+wire        mdplus_mdp_volume_request, ppm_mdp_volume_request;
+
+wire        mdp_track_request  = paprium_active ? ppm_mdp_track_request  : mdplus_mdp_track_request;
+wire  [7:0] mdp_track_num      = paprium_active ? ppm_mdp_track_num      : mdplus_mdp_track_num;
+wire        mdp_track_loop     = paprium_active ? ppm_mdp_track_loop     : mdplus_mdp_track_loop;
+wire        mdp_stop_request   = paprium_active ? ppm_mdp_stop_request   : mdplus_mdp_stop_request;
+wire  [7:0] mdp_fade_sectors   = paprium_active ? ppm_mdp_fade_sectors   : mdplus_mdp_fade_sectors;
+wire        mdp_resume_request = paprium_active ? ppm_mdp_resume_request : mdplus_mdp_resume_request;
+wire  [7:0] mdp_volume         = paprium_active ? ppm_mdp_volume         : mdplus_mdp_volume;
+wire        mdp_volume_request = paprium_active ? ppm_mdp_volume_request : mdplus_mdp_volume_request;
+wire        ppm_mdp_active;
+wire signed [15:0] paprium_sfx_l;
+wire signed [15:0] paprium_sfx_r;
+
+// MD+ status from the HPS bridge (declared here so the cartridge instance above
+// can read them; driven by hps_ext below).
+wire        mdp_hps_playing;
+wire  [7:0] mdp_hps_current_track;
+
+// The stock core uses the VDP's early DMA OE to hide SDRAM latency for ordinary
+// ROM reads. Paprium's 0xC000-0xFFFF window is not an ordinary ROM read: each
+// accepted read advances the cart FPGA's private stream pointer. Use the real
+// cartridge OE/CAS0 for Paprium so speculative/early DMA phases cannot consume
+// stream words.
+wire        cart_oe = paprium_active ? cart_oe_raw : cart_oe_early;
 
 // Muxed cart signals: MD+ overlay takes priority when active
 wire [15:0] cart_data    = mdp_data_en ? mdp_data_out : cart_data_rom;
@@ -532,8 +559,8 @@ md_board md_board
 	.cart_data_en(cart_data_en),
 	.cart_data_wr(cart_data_wr),
 	.cart_cs(cart_cs),
-	//.cart_oe(cart_oe),
-	.vdp_dma_oe_early(cart_oe),
+	.cart_oe(cart_oe_raw),
+	.vdp_dma_oe_early(cart_oe_early),
 	.cart_lwr(cart_lwr),
 	.cart_uwr(cart_uwr),
 	.cart_time(cart_time),
@@ -695,6 +722,28 @@ cartridge cartridge
 	.paprium_active(paprium_active),
 	.paprium_md_reset(paprium_md_reset),
 
+	.mdp_track_request(ppm_mdp_track_request),
+	.mdp_track_num(ppm_mdp_track_num),
+	.mdp_track_loop(ppm_mdp_track_loop),
+	.mdp_stop_request(ppm_mdp_stop_request),
+	.mdp_fade_sectors(ppm_mdp_fade_sectors),
+	.mdp_resume_request(ppm_mdp_resume_request),
+	.mdp_volume(ppm_mdp_volume),
+	.mdp_volume_request(ppm_mdp_volume_request),
+	.mdp_active(ppm_mdp_active),
+	.mdp_playing(mdp_hps_playing),
+	.mdp_current_track(mdp_hps_current_track),
+	.paprium_sfx_l(paprium_sfx_l),
+	.paprium_sfx_r(paprium_sfx_r),
+
+	.dbg_mcu_mem_addr(dbg_mcu_mem_addr),
+	.dbg_mcu_mem_din(dbg_mcu_mem_din),
+	.dbg_mcu_mem_wrl(dbg_mcu_mem_wrl),
+	.dbg_mcu_mem_wrh(dbg_mcu_mem_wrh),
+	.dbg_ramdp_write(dbg_ramdp_write),
+	.dbg_ramdp_addr(dbg_ramdp_addr),
+	.dbg_ramdp_data(dbg_ramdp_data),
+
 	.fm_en(~status[60]),
 	.fm_audio(sms_fm_audio)
 );
@@ -705,8 +754,7 @@ cartridge cartridge
 ///////////////////////////////////////////////////
 
 // HPS ↔ FPGA bridge for MD+ status + audio pointer exchange
-wire mdp_hps_playing;
-wire [7:0] mdp_hps_current_track;
+// (mdp_hps_playing / mdp_hps_current_track declared earlier for the cartridge mux)
 wire [15:0] mdp_audio_rd_ptr;
 wire [15:0] mdp_audio_wr_ptr;
 wire        mdp_audio_active;
@@ -750,14 +798,14 @@ md_plus md_plus
 	.mdp_data_out(mdp_data_out),
 	.mdp_dtack(mdp_dtack),
 
-	.mdp_track_request(mdp_track_request),
-	.mdp_track_num(mdp_track_num),
-	.mdp_track_loop(mdp_track_loop),
-	.mdp_stop_request(mdp_stop_request),
-	.mdp_fade_sectors(mdp_fade_sectors),
-	.mdp_resume_request(mdp_resume_request),
-	.mdp_volume(mdp_volume),
-	.mdp_volume_request(mdp_volume_request),
+	.mdp_track_request(mdplus_mdp_track_request),
+	.mdp_track_num(mdplus_mdp_track_num),
+	.mdp_track_loop(mdplus_mdp_track_loop),
+	.mdp_stop_request(mdplus_mdp_stop_request),
+	.mdp_fade_sectors(mdplus_mdp_fade_sectors),
+	.mdp_resume_request(mdplus_mdp_resume_request),
+	.mdp_volume(mdplus_mdp_volume),
+	.mdp_volume_request(mdplus_mdp_volume_request),
 
 	.mdp_playing(mdp_hps_playing),
 	.mdp_current_track(mdp_hps_current_track),
@@ -777,14 +825,14 @@ mdp_audio mdp_audio
 	// DDRAM interface
 	.DDRAM_CLK(DDRAM_CLK),
 	.DDRAM_BUSY(DDRAM_BUSY),
-	.DDRAM_BURSTCNT(DDRAM_BURSTCNT),
-	.DDRAM_ADDR(DDRAM_ADDR),
+	.DDRAM_BURSTCNT(mdp_DDRAM_BURSTCNT),
+	.DDRAM_ADDR(mdp_DDRAM_ADDR),
 	.DDRAM_DOUT(DDRAM_DOUT),
 	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
-	.DDRAM_RD(DDRAM_RD),
-	.DDRAM_DIN(DDRAM_DIN),
-	.DDRAM_BE(DDRAM_BE),
-	.DDRAM_WE(DDRAM_WE),
+	.DDRAM_RD(mdp_DDRAM_RD),
+	.DDRAM_DIN(mdp_DDRAM_DIN),
+	.DDRAM_BE(mdp_DDRAM_BE),
+	.DDRAM_WE(mdp_DDRAM_WE),
 
 	// Ring buffer pointers (from/to hps_ext)
 	.active(mdp_audio_active),
@@ -802,6 +850,74 @@ mdp_audio mdp_audio
 	// Audio output
 	.audio_l(cdda_l),
 	.audio_r(cdda_r)
+);
+
+///////////////////////////////////////////////////
+// Paprium DDR diagnostic (OSD "Paprium Debug")
+///////////////////////////////////////////////////
+// One DDRAM channel, shared by a runtime switch: in debug mode the diag writes
+// live Paprium cart-bus state to byte 0x30000000 (read over SSH with devmem),
+// and mdp_audio is starved of DDR (its CDDA ring is at the SAME 0x30000000).
+// Out of debug mode, mdp_audio owns DDR for CDDA. DDRAM_CLK = clk_sys here, so
+// the diag + the cart-bus taps run in clk_sys (no CDC).
+
+wire paprium_debug_mode = paprium_active & status[59];
+
+wire  [7:0] mdp_DDRAM_BURSTCNT, diag_DDRAM_BURSTCNT;
+wire [28:0] mdp_DDRAM_ADDR,     diag_DDRAM_ADDR;
+wire        mdp_DDRAM_RD,       diag_DDRAM_RD;
+wire [63:0] mdp_DDRAM_DIN,      diag_DDRAM_DIN;
+wire  [7:0] mdp_DDRAM_BE,       diag_DDRAM_BE;
+wire        mdp_DDRAM_WE,       diag_DDRAM_WE;
+
+assign DDRAM_BURSTCNT = paprium_debug_mode ? diag_DDRAM_BURSTCNT : mdp_DDRAM_BURSTCNT;
+assign DDRAM_ADDR     = paprium_debug_mode ? diag_DDRAM_ADDR     : mdp_DDRAM_ADDR;
+assign DDRAM_RD       = paprium_debug_mode ? diag_DDRAM_RD       : mdp_DDRAM_RD;
+assign DDRAM_DIN      = paprium_debug_mode ? diag_DDRAM_DIN      : mdp_DDRAM_DIN;
+assign DDRAM_BE       = paprium_debug_mode ? diag_DDRAM_BE       : mdp_DDRAM_BE;
+assign DDRAM_WE       = paprium_debug_mode ? diag_DDRAM_WE       : mdp_DDRAM_WE;
+
+wire [447:0] paprium_diag_words;
+wire [24:1] dbg_mcu_mem_addr;
+wire [15:0] dbg_mcu_mem_din;
+wire        dbg_mcu_mem_wrl, dbg_mcu_mem_wrh;
+wire        dbg_ramdp_write;
+wire [10:0]dbg_ramdp_addr;
+wire [31:0]dbg_ramdp_data;
+
+paprium_debug paprium_debug_inst
+(
+	.clk(clk_sys),
+	.enable(paprium_active),
+	.cart_addr(cart_addr),
+	.cart_data(cart_data_rom),
+	.cart_data_wr(cart_data_wr),
+	.cart_cs(cart_cs),
+	.cart_oe(cart_oe),
+	.cart_lwr(cart_lwr),
+	.cart_uwr(cart_uwr),
+	.mcu_mem_addr(dbg_mcu_mem_addr),
+	.mcu_mem_din(dbg_mcu_mem_din),
+	.mcu_mem_wrl(dbg_mcu_mem_wrl),
+	.mcu_mem_wrh(dbg_mcu_mem_wrh),
+	.ramdp_write(dbg_ramdp_write),
+	.ramdp_addr(dbg_ramdp_addr),
+	.ramdp_data(dbg_ramdp_data),
+	.words(paprium_diag_words)
+);
+
+paprium_ddr_diag paprium_ddr_diag_inst
+(
+	.clk(clk_sys),
+	.enable(paprium_debug_mode),
+	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BURSTCNT(diag_DDRAM_BURSTCNT),
+	.DDRAM_ADDR(diag_DDRAM_ADDR),
+	.DDRAM_RD(diag_DDRAM_RD),
+	.DDRAM_DIN(diag_DDRAM_DIN),
+	.DDRAM_BE(diag_DDRAM_BE),
+	.DDRAM_WE(diag_DDRAM_WE),
+	.words(paprium_diag_words)
 );
 
 
@@ -930,12 +1046,15 @@ wire signed [24:0] cdda_scaled_r = $signed(cdda_r) * $signed(9'd93);
 wire signed [15:0] cdda_att_l = cdda_scaled_l[23:8];
 wire signed [15:0] cdda_att_r = cdda_scaled_r[23:8];
 
-// Saturating mix: FM/PSG + attenuated CDDA
-wire signed [16:0] mix_l = $signed(base_audio_l) + $signed(cdda_att_l);
-wire signed [16:0] mix_r = $signed(base_audio_r) + $signed(cdda_att_r);
+// Saturating mix: FM/PSG + Paprium cart SFX + attenuated CDDA
+wire signed [17:0] mix_l = $signed(base_audio_l) + $signed(paprium_sfx_l) + $signed(cdda_att_l);
+wire signed [17:0] mix_r = $signed(base_audio_r) + $signed(paprium_sfx_r) + $signed(cdda_att_r);
 
-assign AUDIO_L = (mix_l[16] != mix_l[15]) ? {mix_l[16], {15{~mix_l[16]}}} : mix_l[15:0];
-assign AUDIO_R = (mix_r[16] != mix_r[15]) ? {mix_r[16], {15{~mix_r[16]}}} : mix_r[15:0];
+wire mix_l_ov = (mix_l[17:15] != 3'b000) && (mix_l[17:15] != 3'b111);
+wire mix_r_ov = (mix_r[17:15] != 3'b000) && (mix_r[17:15] != 3'b111);
+
+assign AUDIO_L = mix_l_ov ? (mix_l[17] ? 16'h8000 : 16'h7fff) : mix_l[15:0];
+assign AUDIO_R = mix_r_ov ? (mix_r[17] ? 16'h8000 : 16'h7fff) : mix_r[15:0];
 
 assign AUDIO_MIX = status[58:57];
 

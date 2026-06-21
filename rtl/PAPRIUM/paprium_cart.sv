@@ -11,13 +11,35 @@ module paprium_cart
 	input             cart_lwr,
 	input             cart_uwr,
 	input             cart_time,
-	input             stream_read_ack,
+	input             stream_read_ack_toggle, // legacy clk_ram ack; stream pointer follows 68k read cadence
 
 	output     [15:0] cart_data,
 	output            mailbox_cs,
 	output            stream_cs,
 	output     [24:1] stream_addr,
 	output            md_reset,
+
+	// MD+ adapter: Paprium MCU BGM requests -> core's native MD+ engine
+	output            mdp_track_request,
+	output      [7:0] mdp_track_num,
+	output            mdp_track_loop,
+	output            mdp_stop_request,
+	output      [7:0] mdp_fade_sectors,
+	output            mdp_resume_request,
+	output      [7:0] mdp_volume,
+	output            mdp_volume_request,
+	output            mdp_active,
+	input             mdp_playing,
+	input       [7:0] mdp_current_track,
+
+	// Paprium MCU-driven cart SFX PCM engine
+	output signed [15:0] sfx_l,
+	output signed [15:0] sfx_r,
+
+	// MCU -> RAMDP debug taps
+	output            dbg_ramdp_write,
+	output     [10:0] dbg_ramdp_addr,
+	output     [31:0] dbg_ramdp_data,
 
 	output     [24:1] mem_addr,
 	output     [15:0] mem_din,
@@ -46,15 +68,33 @@ module paprium_cart
 	assign cpu.map.flash = 0;
 
 	assign mailbox_cs = cpu.map.ramdp;
+	// Paprium's decompression streaming window is BYTE 0xC000-0xFFFF. Here cpu.addr
+	// is a byte address ({cart_addr,1'b0}), so byte 0xC000-0xFFFF == cpu.addr[23:14]==3.
+	// (The MegaCD core used cpu.addr[23:13]==3, but there cpu.addr was a WORD address;
+	// porting that expression verbatim wrongly selected byte 0x6000-0x7FFF, redirecting
+	// real flash reads to the empty workspace -> garbage/crash once flash is touched.)
 	assign stream_cs = enable & cart_cs & cart_oe & sdram_en &
-	                   (cpu.addr[23:13] == 11'd3);
+	                   (cpu.addr[23:14] == 10'd3);
 
+	// Advance the stream pointer once per DELIVERED word, not per raw bus strobe.
+	// stream_read_ack_toggle flips exactly once per completed stream SDRAM read
+	// (cartridge.sv: paprium_stream_read_ack). The cycle-accurate VDP can glitch
+	// cart_cs/cart_oe within one DMA word; keying off the combinational stream_cs
+	// falling edge double-counted those glitches and desynced the stream (-> tile
+	// pixel noise while resident font/UI stayed clean). This matches mega-ppm's
+	// sdram_io.sv, which increments on a registered read-completion.
 	reg [20:0] stream_ptr;
+	reg        stream_ack_d = 0;
 	always @(posedge clk) begin
-		if(reset) stream_ptr <= 0;
+		stream_ack_d <= stream_read_ack_toggle;
+
+		if(reset) begin
+			stream_ptr <= 0;
+			stream_ack_d <= 0;
+		end
 		else if(mcu.ce && (mcu.we != 0) && mcu.map.fpgio_sptr)
 			stream_ptr <= mcu.dato[20:0];
-		else if(stream_read_ack)
+		else if(stream_read_ack_toggle != stream_ack_d)
 			stream_ptr <= stream_ptr + 2'd2;
 	end
 
@@ -63,6 +103,8 @@ module paprium_cart
 	wire [31:0] mcu_dati_fpgio;
 	wire [31:0] mcu_dati_ramdp;
 	wire [31:0] mcu_dati_mem;
+	wire [31:0] mcu_dati_mdp;
+	wire [31:0] mcu_dati_sfx;
 	wire [15:0] cpu_dati_ramdp;
 	wire mcu_ack_mem;
 	wire sdram_en;
@@ -71,7 +113,8 @@ module paprium_cart
 		mcu.map.fpgio ? mcu_dati_fpgio :
 		mcu.map.ramdp ? mcu_dati_ramdp :
 		(mcu.map.flash | mcu.map.sdram | mcu.map.bram) ? mcu_dati_mem :
-		(mcu.map.sfx | mcu.map.mdp) ? 32'h00000000 :
+		mcu.map.mdp   ? mcu_dati_mdp :
+		mcu.map.sfx   ? mcu_dati_sfx :
 		32'hffffffff;
 
 	wire mcu_ack =
@@ -135,10 +178,10 @@ module paprium_cart
 		.cpu(cpu),
 		.mcu_dati(mcu_dati_ramdp),
 		.cpu_dati(cpu_dati_ramdp),
-		.debug_ramdp_write(),
+		.debug_ramdp_write(dbg_ramdp_write),
 		.debug_ramdp_vector_write(),
-		.debug_ramdp_addr(),
-		.debug_ramdp_data(),
+		.debug_ramdp_addr(dbg_ramdp_addr),
+		.debug_ramdp_data(dbg_ramdp_data),
 		.debug_cpu_we_act(),
 		.debug_cpu_write()
 	);
@@ -159,6 +202,67 @@ module paprium_cart
 		.mem_wrh(mem_wrh),
 		.mem_req(mem_req),
 		.mem_ack(mem_ack)
+	);
+
+	SndCk snd;
+	wire signed [15:0] sfx_l_raw;
+	wire signed [15:0] sfx_r_raw;
+	reg  [7:0]         sfx_volume = 8'hff;
+	reg                sfx_started = 0;
+
+	dac_clocker snd_48000
+	(
+		.clk(clk),
+		.rst(reset | ~enable),
+		.rate(16'd48000),
+		.ck_base(`CLK_FREQ),
+		.dac_clk(snd.clk),
+		.next_sample(snd.next_sample),
+		.phase(snd.phase)
+	);
+
+	audio_sfx sfx_inst
+	(
+		.mcu(mcu),
+		.snd(snd),
+		.mcu_dati_sfx(mcu_dati_sfx),
+		.snd_l(sfx_l_raw),
+		.snd_r(sfx_r_raw)
+	);
+
+	always @(posedge clk) begin
+		if(reset | ~enable) begin
+			sfx_volume <= 8'hff;
+			sfx_started <= 0;
+		end
+		else begin
+			if(mcu.ce & mcu.map.fpgio_vols & mcu.we[0])
+				sfx_volume <= mcu.dato[7:0];
+			if(mcu.ce & mcu.map.sfx & (mcu.we != 0))
+				sfx_started <= 1;
+		end
+	end
+
+	assign sfx_l = (enable & sfx_started & (sfx_volume != 0)) ? sfx_l_raw : 16'sd0;
+	assign sfx_r = (enable & sfx_started & (sfx_volume != 0)) ? sfx_r_raw : 16'sd0;
+
+	paprium_mdp_adapter mdp_adapter_inst
+	(
+		.clk(clk),
+		.reset(reset | ~enable),
+		.mcu(mcu),
+		.mcu_dati(mcu_dati_mdp),
+		.mdp_playing(mdp_playing),
+		.mdp_current_track(mdp_current_track),
+		.mdp_track_request(mdp_track_request),
+		.mdp_track_num(mdp_track_num),
+		.mdp_track_loop(mdp_track_loop),
+		.mdp_stop_request(mdp_stop_request),
+		.mdp_fade_sectors(mdp_fade_sectors),
+		.mdp_resume_request(mdp_resume_request),
+		.mdp_volume(mdp_volume),
+		.mdp_volume_request(mdp_volume_request),
+		.mdp_active(mdp_active)
 	);
 
 endmodule

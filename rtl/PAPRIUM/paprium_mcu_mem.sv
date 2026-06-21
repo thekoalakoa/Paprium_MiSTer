@@ -26,10 +26,14 @@ module paprium_mcu_mem
 
 	wire selected = mcu.map.flash | mcu.map.sdram | mcu.map.bram;
 
+	// NEORV32 presents the literal byte address plus byte enables. This adapter
+	// services each 32-bit MCU bus transaction as two 16-bit SDRAM accesses, so
+	// align the base down to a 32-bit boundary before selecting word 0/word 1.
+	// Using addr[...,1] directly double-counts addr[1] for byte lanes 2/3.
 	wire [24:1] selected_addr =
-		mcu.map.flash ? {2'b00, mcu.addr[22:1]} :
-		mcu.map.sdram ? WORKSPACE_BASE + {{4{1'b0}}, mcu.addr[20:1]} :
-		mcu.map.bram  ? BACKUP_BASE + {{11{1'b0}}, mcu.addr[12:1]} :
+		mcu.map.flash ? {2'b00, mcu.addr[22:2], 1'b0} :
+		mcu.map.sdram ? WORKSPACE_BASE + {{4{1'b0}}, mcu.addr[20:2], 1'b0} :
+		mcu.map.bram  ? BACKUP_BASE + {{12{1'b0}}, mcu.addr[12:2], 1'b0} :
 		               24'd0;
 
 	always @(posedge clk) begin
@@ -52,8 +56,11 @@ module paprium_mcu_mem
 						write_data <= mcu.dato;
 						mem_addr <= selected_addr;
 						mem_din <= mcu.dato[15:0];
-						mem_wrl <= mcu.we[1];
-						mem_wrh <= mcu.we[0];
+						// byte enables: wrl drives DQ[7:0] (=mcu byte0=we[0]),
+						// wrh drives DQ[15:8] (=mcu byte1=we[1]). Was crossed, which
+						// silently corrupted byte-granular writes (decompression).
+						mem_wrl <= mcu.we[0];
+						mem_wrh <= mcu.we[1];
 						mem_req <= ~mem_req;
 						state <= 1;
 					end
@@ -63,8 +70,8 @@ module paprium_mcu_mem
 					mcu_dati[15:0] <= mem_dout;
 					mem_addr <= base_addr + 1'd1;
 					mem_din <= write_data[31:16];
-					mem_wrl <= byte_en[3];
-					mem_wrh <= byte_en[2];
+					mem_wrl <= byte_en[2];   // DQ[7:0]=mcu byte2 (was crossed)
+					mem_wrh <= byte_en[3];   // DQ[15:8]=mcu byte3 (was crossed)
 					mem_req <= ~mem_req;
 					state <= 2;
 				end

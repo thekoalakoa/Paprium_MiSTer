@@ -38,3 +38,23 @@ c5_pin_model_dump.txt
 *_netlist
 *.cdf
 **/.DS_Store
+
+# ---- Paprium port: never commit ROMs, build binaries, or logs ----
+# Copyrighted game ROM + diagnostic ROMs (Paprium game data must NOT be published)
+/Paprium.md
+/Paprium_diag_*.md
+*.rom
+cart.rom
+
+# FPGA build outputs at repo root (releases/ stays tracked)
+/*.rbf
+
+# Quartus build logs / scratch markers
+quartus_*.log
+*.err.log
+*.pid
+*.exit
+
+# Sim / scratch dirs
+sim/
+work/

@@ -22,11 +22,16 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/md_io.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_defs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/structs.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/memory.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/audio_clock.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/audio_sfx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/mcu_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/ramdp_io.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/fpgio.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_mcu_mem.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_mdp_adapter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_debug.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_ddr_diag.sv
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_package.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_top_stdlogic.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_wishbone.vhd

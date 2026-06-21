@@ -72,6 +72,30 @@ module cartridge
 	output            paprium_active,
 	output            paprium_md_reset,
 
+	// Paprium MD+ adapter (MCU BGM -> core MD+ engine); muxed with md_plus in top
+	output            mdp_track_request,
+	output      [7:0] mdp_track_num,
+	output            mdp_track_loop,
+	output            mdp_stop_request,
+	output      [7:0] mdp_fade_sectors,
+	output            mdp_resume_request,
+	output      [7:0] mdp_volume,
+	output            mdp_volume_request,
+	output            mdp_active,
+	input             mdp_playing,
+	input       [7:0] mdp_current_track,
+	output signed [15:0] paprium_sfx_l,
+	output signed [15:0] paprium_sfx_r,
+
+	// MCU port-2 (flash/workspace) write taps for the DDR diag
+	output     [24:1] dbg_mcu_mem_addr,
+	output     [15:0] dbg_mcu_mem_din,
+	output            dbg_mcu_mem_wrl,
+	output            dbg_mcu_mem_wrh,
+	output            dbg_ramdp_write,
+	output     [10:0] dbg_ramdp_addr,
+	output     [31:0] dbg_ramdp_data,
+
 	input             fm_en,
 	output     [13:0] fm_audio,
 
@@ -297,7 +321,13 @@ always @(posedge clk) begin
 		md_bank_sram <= 0;
 		md_bank_use <= 0;
 	end
-	else if (cart_lwr && cart_time) begin
+	else if (cart_lwr && cart_time && !paprium_quirk) begin
+		// Paprium does NOT use SSF2 banking (the real mega-ppm cart FPGA has no
+		// bank logic - just flags the A130xx TIME region). Its anti-emulation
+		// routine RUNS in slot 1 and writes A130F3=0; if we apply stock SSF2
+		// banking that remaps the slot the code is executing in -> garbage fetch
+		// -> illegal-instruction crash at 0x081192. Suppressing it keeps reads
+		// identity so the routine survives.
 		if(rom_mask[24:22]) begin
 			if(cart_addr[3:1]) begin
 				md_bank_use <= 1;
@@ -336,9 +366,19 @@ wire        paprium_mem_wrl;
 wire        paprium_mem_wrh;
 wire        paprium_mem_req;
 reg         paprium_stream_pending = 0;
+reg         paprium_stream_ack_toggle = 0;
 
 wire paprium_stream_read_ack = paprium_stream_pending & rom_rd & (rom_req == rom_ack);
 assign paprium_active = paprium_quirk;
+assign dbg_mcu_mem_addr = paprium_mem_addr;
+assign dbg_mcu_mem_din  = paprium_mem_din;
+assign dbg_mcu_mem_wrl  = paprium_mem_wrl;
+assign dbg_mcu_mem_wrh  = paprium_mem_wrh;
+
+always @(posedge clk_ram) begin
+	if(reset) paprium_stream_ack_toggle <= 0;
+	else if(paprium_stream_read_ack) paprium_stream_ack_toggle <= ~paprium_stream_ack_toggle;
+end
 
 paprium_cart paprium
 (
@@ -352,12 +392,28 @@ paprium_cart paprium
 	.cart_lwr(cart_lwr),
 	.cart_uwr(cart_uwr),
 	.cart_time(cart_time),
-	.stream_read_ack(paprium_stream_read_ack),
+	.stream_read_ack_toggle(paprium_stream_ack_toggle),
 	.cart_data(paprium_cart_data),
 	.mailbox_cs(paprium_mailbox_cs),
 	.stream_cs(paprium_stream_cs),
 	.stream_addr(paprium_stream_addr),
 	.md_reset(paprium_md_reset),
+	.mdp_track_request(mdp_track_request),
+	.mdp_track_num(mdp_track_num),
+	.mdp_track_loop(mdp_track_loop),
+	.mdp_stop_request(mdp_stop_request),
+	.mdp_fade_sectors(mdp_fade_sectors),
+	.mdp_resume_request(mdp_resume_request),
+	.mdp_volume(mdp_volume),
+	.mdp_volume_request(mdp_volume_request),
+	.mdp_active(mdp_active),
+	.mdp_playing(mdp_playing),
+	.mdp_current_track(mdp_current_track),
+	.sfx_l(paprium_sfx_l),
+	.sfx_r(paprium_sfx_r),
+	.dbg_ramdp_write(dbg_ramdp_write),
+	.dbg_ramdp_addr(dbg_ramdp_addr),
+	.dbg_ramdp_data(dbg_ramdp_data),
 	.mem_addr(paprium_mem_addr),
 	.mem_din(paprium_mem_din),
 	.mem_dout(rom2_data),
