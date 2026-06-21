@@ -129,7 +129,6 @@ localparam CONF_STR = {
 
 	"-;",
 	"O[61],Pause When OSD is Open,No,Yes;",
-	"O[59],Paprium Debug (DDR/no audio),Off,On;",
 	"R[0],Reset;",
 	"J1,A,B,C,Start,Mode,X,Y,Z;",
 	"jn,A,B,R,Start,Select,X,Y,L;", // name map to SNES layout.
@@ -736,14 +735,6 @@ cartridge cartridge
 	.paprium_sfx_l(paprium_sfx_l),
 	.paprium_sfx_r(paprium_sfx_r),
 
-	.dbg_mcu_mem_addr(dbg_mcu_mem_addr),
-	.dbg_mcu_mem_din(dbg_mcu_mem_din),
-	.dbg_mcu_mem_wrl(dbg_mcu_mem_wrl),
-	.dbg_mcu_mem_wrh(dbg_mcu_mem_wrh),
-	.dbg_ramdp_write(dbg_ramdp_write),
-	.dbg_ramdp_addr(dbg_ramdp_addr),
-	.dbg_ramdp_data(dbg_ramdp_data),
-
 	.fm_en(~status[60]),
 	.fm_audio(sms_fm_audio)
 );
@@ -853,72 +844,22 @@ mdp_audio mdp_audio
 );
 
 ///////////////////////////////////////////////////
-// Paprium DDR diagnostic (OSD "Paprium Debug")
+// Paprium CDDA owns the DDRAM channel (MD+ ring buffer)
 ///////////////////////////////////////////////////
-// One DDRAM channel, shared by a runtime switch: in debug mode the diag writes
-// live Paprium cart-bus state to byte 0x30000000 (read over SSH with devmem),
-// and mdp_audio is starved of DDR (its CDDA ring is at the SAME 0x30000000).
-// Out of debug mode, mdp_audio owns DDR for CDDA. DDRAM_CLK = clk_sys here, so
-// the diag + the cart-bus taps run in clk_sys (no CDC).
 
-wire paprium_debug_mode = paprium_active & status[59];
+wire  [7:0] mdp_DDRAM_BURSTCNT;
+wire [28:0] mdp_DDRAM_ADDR;
+wire        mdp_DDRAM_RD;
+wire [63:0] mdp_DDRAM_DIN;
+wire  [7:0] mdp_DDRAM_BE;
+wire        mdp_DDRAM_WE;
 
-wire  [7:0] mdp_DDRAM_BURSTCNT, diag_DDRAM_BURSTCNT;
-wire [28:0] mdp_DDRAM_ADDR,     diag_DDRAM_ADDR;
-wire        mdp_DDRAM_RD,       diag_DDRAM_RD;
-wire [63:0] mdp_DDRAM_DIN,      diag_DDRAM_DIN;
-wire  [7:0] mdp_DDRAM_BE,       diag_DDRAM_BE;
-wire        mdp_DDRAM_WE,       diag_DDRAM_WE;
-
-assign DDRAM_BURSTCNT = paprium_debug_mode ? diag_DDRAM_BURSTCNT : mdp_DDRAM_BURSTCNT;
-assign DDRAM_ADDR     = paprium_debug_mode ? diag_DDRAM_ADDR     : mdp_DDRAM_ADDR;
-assign DDRAM_RD       = paprium_debug_mode ? diag_DDRAM_RD       : mdp_DDRAM_RD;
-assign DDRAM_DIN      = paprium_debug_mode ? diag_DDRAM_DIN      : mdp_DDRAM_DIN;
-assign DDRAM_BE       = paprium_debug_mode ? diag_DDRAM_BE       : mdp_DDRAM_BE;
-assign DDRAM_WE       = paprium_debug_mode ? diag_DDRAM_WE       : mdp_DDRAM_WE;
-
-wire [447:0] paprium_diag_words;
-wire [24:1] dbg_mcu_mem_addr;
-wire [15:0] dbg_mcu_mem_din;
-wire        dbg_mcu_mem_wrl, dbg_mcu_mem_wrh;
-wire        dbg_ramdp_write;
-wire [10:0]dbg_ramdp_addr;
-wire [31:0]dbg_ramdp_data;
-
-paprium_debug paprium_debug_inst
-(
-	.clk(clk_sys),
-	.enable(paprium_active),
-	.cart_addr(cart_addr),
-	.cart_data(cart_data_rom),
-	.cart_data_wr(cart_data_wr),
-	.cart_cs(cart_cs),
-	.cart_oe(cart_oe),
-	.cart_lwr(cart_lwr),
-	.cart_uwr(cart_uwr),
-	.mcu_mem_addr(dbg_mcu_mem_addr),
-	.mcu_mem_din(dbg_mcu_mem_din),
-	.mcu_mem_wrl(dbg_mcu_mem_wrl),
-	.mcu_mem_wrh(dbg_mcu_mem_wrh),
-	.ramdp_write(dbg_ramdp_write),
-	.ramdp_addr(dbg_ramdp_addr),
-	.ramdp_data(dbg_ramdp_data),
-	.words(paprium_diag_words)
-);
-
-paprium_ddr_diag paprium_ddr_diag_inst
-(
-	.clk(clk_sys),
-	.enable(paprium_debug_mode),
-	.DDRAM_BUSY(DDRAM_BUSY),
-	.DDRAM_BURSTCNT(diag_DDRAM_BURSTCNT),
-	.DDRAM_ADDR(diag_DDRAM_ADDR),
-	.DDRAM_RD(diag_DDRAM_RD),
-	.DDRAM_DIN(diag_DDRAM_DIN),
-	.DDRAM_BE(diag_DDRAM_BE),
-	.DDRAM_WE(diag_DDRAM_WE),
-	.words(paprium_diag_words)
-);
+assign DDRAM_BURSTCNT = mdp_DDRAM_BURSTCNT;
+assign DDRAM_ADDR     = mdp_DDRAM_ADDR;
+assign DDRAM_RD       = mdp_DDRAM_RD;
+assign DDRAM_DIN      = mdp_DDRAM_DIN;
+assign DDRAM_BE       = mdp_DDRAM_BE;
+assign DDRAM_WE       = mdp_DDRAM_WE;
 
 
 ///////////////////////////////////////////////////

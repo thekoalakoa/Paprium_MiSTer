@@ -283,7 +283,7 @@ module mix_mono
 		else begin
 
 			if(acc < -32768)
-				snd <= -16'sd32768;
+				snd <= 16'sh8000;   // -32768 saturation floor (bit pattern; avoids 16'sd literal overflow)
 			else if(acc > 32767)
 				snd <= 16'sd32767;
 			else

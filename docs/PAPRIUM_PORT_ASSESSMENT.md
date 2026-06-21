@@ -1,5 +1,67 @@
 # Paprium Cartridge Port Assessment
 
+## Status: COMPLETE (hardware-verified)
+
+Paprium runs on the MiSTer Mega Drive core: it boots past copy protection,
+renders correctly, plays CDDA background music, and plays the full per-channel
+cartridge sound effects. The SVP (Virtua Racing) chip is retained. Verified on
+DE10-Nano hardware.
+
+All eight implementation stages below are done. Key outcomes, including the
+fixes that differed from the original plan:
+
+- **Boot / copy-protection (stage 5).** Paprium's anti-emulation routine writes
+  `0xA130F3` while executing from the cartridge, and the stock Mega Drive SSF2
+  bank logic remapped the running code out from under it — an illegal-instruction
+  loop hidden under the legal screen. Fix: suppress SSF2 banking when the Paprium
+  mapper is active (`rtl/cartridge.sv`), matching the real cartridge, which has
+  no SSF2 banking. The 68000 then survives the `0x080100` "SEGA" protection
+  check and boots.
+
+- **Graphics / decompression (stage 6).** The MCU decompresses bulk graphics
+  into the SDRAM workspace; the 68000/VDP read them through the streaming window.
+  The stream pointer must advance once per delivered word. Advancing it on the
+  raw combinational bus strobe double-counted glitches from the cycle-accurate
+  VDP and desynced the stream (per-pixel tile noise on backgrounds while resident
+  font/UI stayed clean). Fix: advance on the registered per-word read-completion
+  ack (`rtl/PAPRIUM/paprium_cart.sv`), matching mega-ppm's `sdram_io.sv`.
+
+- **Background music (stage 6).** Implemented as planned. A small MCU-facing MD+
+  adapter (`rtl/PAPRIUM/paprium_mdp_adapter.sv`) bridges the firmware's native
+  MD+ play/stop/volume commands to the core's MD+ engine and CDDA mixer, with an
+  EverDrive-FIFO stub so `mdp_init()` completes. CDDA plays.
+
+- **Cartridge SFX — IN SCOPE (revised from the original plan below).** SFX are
+  *not* out of scope and are *not* the YM2612/PSG: they are Paprium's own
+  self-contained PCM engine at MCU address `0x06000000` (eight channels, each
+  with a FIFO and per-channel sample-rate/pitch/pan/volume). The full mega-ppm
+  `audio_sfx` block is ported (`rtl/PAPRIUM/audio_sfx.sv`,
+  `rtl/PAPRIUM/audio_clock.sv`) and summed with FM/PSG and CDDA at the top level
+  (`MegaDrive.sv`). The earlier "too big to fit" overflow was caused by backing
+  the eight 256-entry channel FIFOs with the port's 65536x16 (1 Mbit) `ram_dp16`;
+  it was fixed with a right-sized 256x16 `sfx_fifo_ram` (~8 M10K total). The core
+  fits at ~92% M10K **with the SVP retained** — no sacrifice required.
+
+- **Save memory (stage 7).** Backup RAM behavior is in place.
+
+- **Diagnostics removed (stage 8).** The DDR diagnostic harness and the OSD
+  "Paprium Debug" option are removed from the shipped core; CDDA owns the DDR
+  audio channel unconditionally.
+
+### Byte-order note
+
+The MCU is little-endian (NEORV32) and the 68000 is big-endian, sharing one
+SDRAM. mega-ppm's `sdram_io.sv` crosses the SDRAM byte-enables because the real
+Paprium board physically crosses the DQ byte lanes — the two cancel out. The
+MiSTer SDRAM is straight-wired, so the MCU memory adapter
+(`rtl/PAPRIUM/paprium_mcu_mem.sv`) keeps the byte-enables straight to reproduce
+the same net memory layout.
+
+---
+
+The remainder of this document is the original pre-implementation assessment,
+kept for design reference.
+
 ## Goal
 
 Run the original Paprium ROM on the MiSTer Mega Drive core by emulating the

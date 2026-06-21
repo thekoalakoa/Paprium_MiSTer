@@ -1,5 +1,10 @@
 # Paprium Mega Drive Port: First Hardware Build
 
+> **Historical.** This documents the very first build (legal-screen milestone).
+> The port is now complete and hardware-verified — boot, graphics, CDDA music,
+> and full cartridge SFX, with the SVP retained. See
+> [`PAPRIUM_PORT_ASSESSMENT.md`](PAPRIUM_PORT_ASSESSMENT.md) for the final status.
+
 ## Purpose
 
 This build tests the minimum real-cartridge architecture needed to reach the
