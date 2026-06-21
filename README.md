@@ -41,6 +41,7 @@ Place the ROM and WAV files there:
 └── 52 Waterfront Beat.wav
 Load Paprium.md from the Mega Drive Paprium core.
 
+**You need to boot the game once and select "Save back up ram" in the OSD the first time you play - Then hit reset in the OSD to get the REAL version of paprium to boot** 
 
 ## A note on AI use ("vibe coding")
 
