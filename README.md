@@ -40,3 +40,27 @@ Place the ROM and WAV files there:
 ├── ...
 └── 52 Waterfront Beat.wav
 Load Paprium.md from the Mega Drive Paprium core.
+
+
+## A note on AI use ("vibe coding")
+
+Let's get this out of the way: it's a **Paprium** project *and* it's **AI
+vibe-coded** — two of the internet's favourite things to argue about, bundled
+into one repo. I'm fully expecting some hate for it, and honestly, that's fair.
+
+I'm not an FPGA engineer. Most of the Verilog in here was generated and debugged
+by AI (Claude and Codex) through a lot of back-and-forth — I'm not going to
+pretend I hand-wrote it, because I didn't.
+
+What I actually did was the boring half: running every build on a real MiSTer,
+photographing the garbled graphics, listening to the broken audio, feeding it
+all back, correcting the AI when it was confidently wrong, and deciding what was
+good enough to call done. The Paprium / EverDrive Pro / firmware / MD+ knowledge
+came from me and the wider preservation community — the AI couldn't see the
+screen or hear the speakers, so that bit was on me.
+
+It's a hack, not a "proper" core, and I've no doubt someone could do it far
+better. If it annoys anyone enough to go and build the real thing from scratch,
+without AI — genuinely, brilliant, please do, everyone wins. Until then, I made
+this so a few people could mess about with Paprium on MiSTer. If that's you,
+enjoy.
