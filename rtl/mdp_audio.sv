@@ -40,6 +40,7 @@ module mdp_audio
 	input       [7:0] volume,
 	input             resume_request,
 	input             osd_pause,
+	input             rate_48k,   // 1 = consume at 48kHz (Paprium WAVs), 0 = 44.1kHz
 
 	output reg signed [15:0] audio_l,
 	output reg signed [15:0] audio_r
@@ -151,7 +152,9 @@ end
 wire [15:0] vol_product = {8'd0, volume} * {8'd0, fade_vol};
 wire  [7:0] eff_volume  = vol_product[15:8];
 
-// 44.1 kHz sample clock (~53.7 MHz / 1218 = ~44083 Hz)
+// CDDA consume rate: 53.69 MHz / 1218 = ~44083 Hz (44.1 kHz Redbook), or
+// / 1119 = ~47983 Hz (48 kHz) for Paprium, whose WAV tracks are authored at
+// 48 kHz - playing those at 44.1 kHz ran the music ~8% slow / pitch low.
 reg [10:0] sample_div;
 reg        sample_tick;
 
@@ -159,7 +162,7 @@ always @(posedge clk) begin
 	sample_tick <= 0;
 	if (reset)
 		sample_div <= 0;
-	else if (sample_div >= 11'd1217) begin
+	else if (sample_div >= (rate_48k ? 11'd1118 : 11'd1217)) begin
 		sample_div  <= 0;
 		sample_tick <= 1;
 	end else

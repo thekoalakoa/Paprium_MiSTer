@@ -837,6 +837,7 @@ mdp_audio mdp_audio
 	.volume(mdp_volume),
 	.resume_request(mdp_resume_request),
 	.osd_pause(OSD_STATUS & status[61]),
+	.rate_48k(paprium_active),   // Paprium WAVs are 48kHz; play them at 48k not 44.1k
 
 	// Audio output
 	.audio_l(cdda_l),

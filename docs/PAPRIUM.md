@@ -20,11 +20,16 @@ sound effects. The SVP chip (Virtua Racing) is retained.
   on-chip.
 - **Decompression / graphics.** The MCU decompresses graphics into the workspace;
   the 68000/VDP read them back through the streaming window via an
-  auto-incrementing pointer.
+  auto-incrementing pointer. The firmware's `0x81` LZ decompressor (`mame.c`)
+  was replaced with the correct Genesis Plus GX / FinalBurn Neo routine
+  (`paprium_decoder_lzo`) — the MAME-derived one is broken and corrupts the
+  subway and a few other areas (fix per krikzz; not yet in stock mega-ppm).
 - **Background music (CDDA).** The MCU's native MD+ commands are bridged to the
   core's MD+ engine and CDDA mixer by `paprium_mdp_adapter.sv`, with an
   EverDrive-FIFO stub so `mdp_init()` completes. No ROM audio conversion is
-  required.
+  required. Paprium's WAV tracks are authored at **48 kHz**, so the CDDA player
+  consumes at 48 kHz for Paprium (44.1 kHz for other MD+ content) — otherwise
+  the music plays ~8% slow.
 - **Sound effects.** Paprium's own self-contained cartridge PCM engine (eight
   channels, each with a FIFO and per-channel sample-rate / pitch / pan / volume)
   is ported as `audio_sfx.sv` and mixed with FM/PSG and CDDA at the top level.
