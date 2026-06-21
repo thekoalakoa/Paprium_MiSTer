@@ -1,6 +1,6 @@
 Paprium for MiSTer Mega Drive
 
-A MiSTer Mega Drive core fork bringing Paprium support to FPGA, with working MCU/cart behaviour, streamed graphics, CDDA/MD+ music, and restored SFX support.
+A MiSTer Mega Drive core fork bringing Everdrive Pro Style Paprium support to Mister FPGA, with working MCU/cart behaviour, streamed graphics, CDDA/MD+ music, 
 
 This project builds on years of community reverse-engineering, preservation, emulator work, and flash-cart development.
 
