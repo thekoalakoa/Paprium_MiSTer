@@ -24,7 +24,9 @@ module paprium_mcu_mem
 	reg [31:0] write_data;
 	reg [24:1] base_addr;
 
-	wire selected = mcu.map.flash | mcu.map.sdram | mcu.map.bram;
+	// bram (Paprium battery backup / save RAM) is handled by paprium_backup, an
+	// on-chip save-wired RAM - NOT this SDRAM adapter.
+	wire selected = mcu.map.flash | mcu.map.sdram;
 
 	// NEORV32 presents the literal byte address plus byte enables. This adapter
 	// services each 32-bit MCU bus transaction as two 16-bit SDRAM accesses, so
@@ -33,7 +35,6 @@ module paprium_mcu_mem
 	wire [24:1] selected_addr =
 		mcu.map.flash ? {2'b00, mcu.addr[22:2], 1'b0} :
 		mcu.map.sdram ? WORKSPACE_BASE + {{4{1'b0}}, mcu.addr[20:2], 1'b0} :
-		mcu.map.bram  ? BACKUP_BASE + {{12{1'b0}}, mcu.addr[12:2], 1'b0} :
 		               24'd0;
 
 	always @(posedge clk) begin

@@ -304,8 +304,8 @@ dpram_dif #(17,8,16,16) ram
 	.q_b(sram2_q)
 );
 
-assign save_do     = sram2_q;
-assign save_change = sram_wren;
+assign save_do     = paprium_active ? paprium_save_do     : sram2_q;
+assign save_change = paprium_active ? paprium_save_change : sram_wren;
 
 //---------------------- MD cart ---------------------------------------
 
@@ -365,6 +365,8 @@ wire [15:0] paprium_mem_din;
 wire        paprium_mem_wrl;
 wire        paprium_mem_wrh;
 wire        paprium_mem_req;
+wire [15:0] paprium_save_do;
+wire        paprium_save_change;
 reg         paprium_stream_pending = 0;
 reg         paprium_stream_ack_toggle = 0;
 
@@ -411,6 +413,11 @@ paprium_cart paprium
 	.mdp_current_track(mdp_current_track),
 	.sfx_l(paprium_sfx_l),
 	.sfx_r(paprium_sfx_r),
+	.save_addr(save_addr),
+	.save_di(save_di),
+	.save_do(paprium_save_do),
+	.save_wr(save_wr),
+	.save_change(paprium_save_change),
 	.dbg_ramdp_write(dbg_ramdp_write),
 	.dbg_ramdp_addr(dbg_ramdp_addr),
 	.dbg_ramdp_data(dbg_ramdp_data),

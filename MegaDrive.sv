@@ -981,21 +981,26 @@ audio_cond audio_cond
 	.AUDIO_R(base_audio_r)
 );
 
-// Attenuate CDDA: 93/256 ≈ 0.363 — matched to Mega Drive hardware output via A/B recording comparisons
-wire signed [24:0] cdda_scaled_l = $signed(cdda_l) * $signed(9'd93);
-wire signed [24:0] cdda_scaled_r = $signed(cdda_r) * $signed(9'd93);
-wire signed [15:0] cdda_att_l = cdda_scaled_l[23:8];
-wire signed [15:0] cdda_att_r = cdda_scaled_r[23:8];
+// CDDA mix level. Standard MD+ is 93/256 (~0.363), matched to Mega Drive
+// hardware via A/B recordings. Paprium mixes CDDA against its own loud cart SFX,
+// so when the Paprium mapper is active give CDDA ~+10 dB (294/256 ~= 1.15) to
+// sit up with the SFX; all other MD+ games keep 93/256. The wider cdda_att / mix
+// range + final saturation absorb the now >unity Paprium peaks without wrapping.
+wire signed  [9:0] cdda_mult   = paprium_active ? 10'sd294 : 10'sd93;
+wire signed [25:0] cdda_scaled_l = $signed(cdda_l) * cdda_mult;
+wire signed [25:0] cdda_scaled_r = $signed(cdda_r) * cdda_mult;
+wire signed [17:0] cdda_att_l = cdda_scaled_l >>> 8;
+wire signed [17:0] cdda_att_r = cdda_scaled_r >>> 8;
 
-// Saturating mix: FM/PSG + Paprium cart SFX + attenuated CDDA
-wire signed [17:0] mix_l = $signed(base_audio_l) + $signed(paprium_sfx_l) + $signed(cdda_att_l);
-wire signed [17:0] mix_r = $signed(base_audio_r) + $signed(paprium_sfx_r) + $signed(cdda_att_r);
+// Saturating mix: FM/PSG + Paprium cart SFX + (boosted) CDDA
+wire signed [18:0] mix_l = $signed(base_audio_l) + $signed(paprium_sfx_l) + $signed(cdda_att_l);
+wire signed [18:0] mix_r = $signed(base_audio_r) + $signed(paprium_sfx_r) + $signed(cdda_att_r);
 
-wire mix_l_ov = (mix_l[17:15] != 3'b000) && (mix_l[17:15] != 3'b111);
-wire mix_r_ov = (mix_r[17:15] != 3'b000) && (mix_r[17:15] != 3'b111);
+wire mix_l_ov = (mix_l[18:15] != 4'b0000) && (mix_l[18:15] != 4'b1111);
+wire mix_r_ov = (mix_r[18:15] != 4'b0000) && (mix_r[18:15] != 4'b1111);
 
-assign AUDIO_L = mix_l_ov ? (mix_l[17] ? 16'h8000 : 16'h7fff) : mix_l[15:0];
-assign AUDIO_R = mix_r_ov ? (mix_r[17] ? 16'h8000 : 16'h7fff) : mix_r[15:0];
+assign AUDIO_L = mix_l_ov ? (mix_l[18] ? 16'h8000 : 16'h7fff) : mix_l[15:0];
+assign AUDIO_R = mix_r_ov ? (mix_r[18] ? 16'h8000 : 16'h7fff) : mix_r[15:0];
 
 assign AUDIO_MIX = status[58:57];
 

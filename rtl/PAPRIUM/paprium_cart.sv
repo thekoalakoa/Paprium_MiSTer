@@ -41,6 +41,13 @@ module paprium_cart
 	output     [10:0] dbg_ramdp_addr,
 	output     [31:0] dbg_ramdp_data,
 
+	// Paprium battery-backup save RAM (HPS cartridge save interface)
+	input      [14:0] save_addr,
+	input      [15:0] save_di,
+	output     [15:0] save_do,
+	input             save_wr,
+	output            save_change,
+
 	output     [24:1] mem_addr,
 	output     [15:0] mem_din,
 	input      [15:0] mem_dout,
@@ -105,20 +112,24 @@ module paprium_cart
 	wire [31:0] mcu_dati_mem;
 	wire [31:0] mcu_dati_mdp;
 	wire [31:0] mcu_dati_sfx;
+	wire [31:0] mcu_dati_bram;
 	wire [15:0] cpu_dati_ramdp;
 	wire mcu_ack_mem;
+	wire mcu_ack_bram;
 	wire sdram_en;
 
 	wire [31:0] mcu_dati =
 		mcu.map.fpgio ? mcu_dati_fpgio :
 		mcu.map.ramdp ? mcu_dati_ramdp :
-		(mcu.map.flash | mcu.map.sdram | mcu.map.bram) ? mcu_dati_mem :
+		(mcu.map.flash | mcu.map.sdram) ? mcu_dati_mem :
+		mcu.map.bram  ? mcu_dati_bram :
 		mcu.map.mdp   ? mcu_dati_mdp :
 		mcu.map.sfx   ? mcu_dati_sfx :
 		32'hffffffff;
 
 	wire mcu_ack =
-		(mcu.map.flash | mcu.map.sdram | mcu.map.bram) ? mcu_ack_mem :
+		(mcu.map.flash | mcu.map.sdram) ? mcu_ack_mem :
+		mcu.map.bram                    ? mcu_ack_bram :
 		1'b1;
 
 	wire [15:0] wram_dato;
@@ -202,6 +213,20 @@ module paprium_cart
 		.mem_wrh(mem_wrh),
 		.mem_req(mem_req),
 		.mem_ack(mem_ack)
+	);
+
+	paprium_backup backup_inst
+	(
+		.clk(clk),
+		.reset(reset | ~enable),
+		.mcu(mcu),
+		.mcu_dati(mcu_dati_bram),
+		.mcu_ack(mcu_ack_bram),
+		.bram_change(save_change),
+		.save_addr(save_addr),
+		.save_di(save_di),
+		.save_do(save_do),
+		.save_wr(save_wr)
 	);
 
 	SndCk snd;
