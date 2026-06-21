@@ -1,44 +1,42 @@
-# Nuked-MD port for MiSTer
+Paprium for MiSTer Mega Drive
 
-![nukedmd_logo](rtl/nuked-md/nukedmd_logo.png)
+A MiSTer Mega Drive core fork bringing Paprium support to FPGA, with working MCU/cart behaviour, streamed graphics, CDDA/MD+ music, and restored SFX support.
 
-[Original Nuked-MD repository](https://github.com/nukeykt/Nuked-MD-FPGA)
+This project builds on years of community reverse-engineering, preservation, emulator work, and flash-cart development.
 
-## Installing
-copy rbf to root of SD card. Put some ROMs (.BIN/.GEN/.MD/.SMS) into MegaDrive folder
+Based on prior work by:
+Krikzz / mega-ppm
+Project Little Man
+TheHpman / MAME Paprium research
+MAVProxyUser / Genesis Plus GX Paprium PR
+Paprium preservation community
 
-
-## Hot Keys
-* F1 - reset to JP(NTSC) region
-* F2 - reset to US(NTSC) region
-* F3 - reset to EU(PAL)  region
-
-
-## Auto Region option (Megadrive/Genesis carts only)
-There are 2 versions of region detection:
-
-1) File name extension:
-
-* BIN -> JP
-* GEN -> US
-* MD  -> EU
-
-2) Header. It may not always work as not all ROMs follow the rule, especially in European region.
-The header may include several regions - the correct one will be selected depending on priority option.
+Special thanks:
+MiSTer Mega Drive core developers
+Genesis Plus GX / MAME contributors
+Everyone who helped test, document, and preserve Paprium
 
 
-## Sega Master System
+ROM and WAV assets are not included.
+Bring your own Paprium dump and audio files.
 
-Core supports SMS carts with the same compatibility level as original MegaDrive hardware. Not all SMS carts are compatible with MD hardware.
+If only there were some kind of archive on the internet...
 
+## Required Files
 
-## Additional features
+Create this folder on your MiSTer SD card:
 
-* Multitaps: 4-way, Team player, J-Cart
-* SVP chip (Virtua Racing)
-* Audio Filters for Model 1, Model 2, Minimal, No Filter.
-* Option to choose between YM2612 and YM3438 (changes Ladder Effect behavior).
-* FM chip for SMS carts.
-* Composite Blending, smooth dithering patterns in games.
-* Border/Borderless modes.
-* Support many popular mappers.
+```text
+/media/fat/games/MegaDrive/Paprium/
+Place the ROM and WAV files there:
+
+├── Paprium.md
+├── paprium.cue
+├── 01 Theme of Paprium.wav
+├── 02 90's Acid Dub Character Select.wav
+├── 03 Bone Crusher.wav
+├── 04 Drumbass Boss.wav
+├── 05 Asian Chill.wav
+├── ...
+└── 52 Waterfront Beat.wav
+Load Paprium.md from the Mega Drive Paprium core.
