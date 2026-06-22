@@ -64,14 +64,43 @@ GitHub issue numbers are referenced as (#n).
 - **Symptom:** X/Y/Z/Mode not recognised; OSD "6 Buttons Mode" and the mapped
   Mode button do nothing. 3-button works (game playable).
 - **Status:** Investigated, open.
-- **Leads:**
-  - Core `pad_io.sv` 6-button is generic and works on other MD games, so this is
-    Paprium-specific.
-  - Disassembly: Paprium's main pad read at ROM `0xaae0` is a standard **3-button**
-    read (one TH toggle). The 6-button extended read isn't visible in the static
-    ROM (likely MCU-decompressed or dynamically addressed).
-  - **Next:** controller-port diagnostic to capture Paprium's TH-toggle sequence
-    vs the JCNT/state `pad_io` returns.
+
+- **The 6-button handshake (per community reference on #4):** the pad has an
+  internal counter that advances on every TH (bit 6 / select) transition and
+  resets after ~1.5 ms of TH inactivity. XYZ are revealed by toggling TH ~3×
+  quickly within one read:
+  | Step | TH | data (s a c b r l d u) |
+  |---|---|---|
+  | 1 | 0/1 | normal 3-button frame |
+  | 2 | 0/1 | normal again |
+  | 3 | 0 | directionals **0000** (6-btn signature) |
+  | 3 | 1 | **C B Mode X Y Z** (the extras) |
+  | 4 | 0 | directionals **1111** (confirm) |
+  Two failure layers: (1) the game's pad read doesn't walk the full handshake
+  (only sees the 3-button frame); (2) the core/config exposes a 3-button pad.
+
+- **Our core is correct (rules out layer 2).** `pad_io.sv` returns exactly the
+  protocol frames: JCNT=2/TH=0 → `{Start,A,0000}`, JCNT=3/TH=0 → `{Start,A,1111}`,
+  JCNT=3/TH=1 → `{C,B,Mode,X,Y,Z}`. It implements the TH-edge counter and the
+  ~1.5 ms reset (`JTMR > 11600*7`), and `status[5]` (OSD "6 Buttons Mode") is the
+  enable. Since you've confirmed `status[5]=On` still fails, the core side is OK.
+
+- **So it's layer 1 (the read).** Findings: Paprium's pad read at ROM `0xaae0`
+  is a standard **3-button** read (single TH toggle — bails after step 1). Its
+  full 6-button read isn't visible in the static ROM (likely MCU-decompressed or
+  dynamically addressed). Since 6-button *does* work on real hardware, the most
+  likely cause is the replier's **pitfall #2: the read is stalled/interrupted
+  past ~1.5 ms, so the core's counter resets mid-sequence and never reaches
+  step 3.** On real HW the read halts the Z80 to avoid bus contention; on this
+  cycle-accurate core the Paprium MCU and/or interrupt timing may be stretching
+  the read past the reset window.
+
+- **Things to check next:**
+  - HW controller-port diagnostic: log the TH-toggle sequence Paprium emits and
+    the JCNT/state the core reaches — does it ever reach JCNT=3, or reset first?
+  - Is the gap between toggles exceeding ~1.5 ms (`JTMR` reset)? If so, the reset
+    threshold or the bus timing during Paprium's read is the culprit.
+  - Locate Paprium's real (multi-toggle) 6-button read routine.
 
 ### E. "12 Stage Clear" jingle doesn't play (#9)
 - **Symptom:** When the stage ends and the score appears, `12 Stage Clear.wav`
