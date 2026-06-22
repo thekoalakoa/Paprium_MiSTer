@@ -5,92 +5,105 @@ EverDrive-Pro-style hack (see `PAPRIUM.md`), so some game behaviour is still
 imperfect. Status key: **Open** · **Investigating** · **Fixed**.
 
 > Architecture reminder: the 68000 runs the game; the NEORV32 **MCU** (running
-> the `mega-ppm` firmware) handles the cart protocol — decompression, sprite/
-> animation/object lists, and BGM requests. Many behaviour bugs are therefore
-> MCU-firmware or MCU↔68000-handshake issues, not pure RTL.
+> the `mega-ppm` firmware) handles the cart protocol — decompression, the
+> sprite/animation/object lists, and BGM requests. Many behaviour bugs are
+> therefore MCU-firmware, MCU **throughput**, or MCU↔68000-handshake issues,
+> not pure VDP/RTL.
+
+GitHub issue numbers are referenced as (#n).
 
 ---
 
 ## Open
 
-### 1. 6-button controller support missing
-- **Symptom:** X/Y/Z/Mode aren't recognised. The OSD "6 Buttons Mode" option and
-  the mapped Mode button do nothing. 3-button input works (game is playable).
+### A. Character / enemy animations skipped (#10)
+- **Symptom:** Characters slide without the walking animation, hit each other
+  without the hit animation, or perform certain grabs without animation. **The
+  more enemies on screen, the worse it gets.**
+- **Status:** Open — strongest lead so far.
+- **Leads:**
+  - The "scales with on-screen enemy count" behaviour is the key clue: it points
+    to the **MCU running out of per-frame processing time**. The MCU advances
+    each object's animation frame and composes sprites every frame; with many
+    objects it can't finish in the available window, so the 68000 keeps moving
+    positions while the MCU-side animation frame doesn't update → **sliding /
+    missing hit & grab animations**.
+  - Candidate root causes: NEORV32 MCU clock too slow vs the real cart MCU; a
+    per-frame object/time budget being exceeded; or an MCU↔68000 sync that drops
+    work when the MCU is late.
+  - **Next:** measure how long the MCU takes to process the object list per frame
+    vs the budget; check the NEORV32 clock; see if the firmware caps objects.
+  - May share a root cause with the subway stall (B) and elevator (C).
+
+### B. Subway station stall before the train (#5)
+- **Symptom:** *Occasionally* stuck in the subway station after clearing enemies
+  — enemies stop appearing and the screen stops scrolling, can't progress.
+  (Video: x.com/NeoCverA/status/2068909870263210445)
+- **Status:** Open.
+- **Leads:**
+  - "Occasionally" + "everything stops" = a **stall/race**: the game waiting on
+    something that doesn't arrive (a spawn/scroll trigger).
+  - Candidates: an MCU↔68000 mailbox handshake that intermittently hangs; an MCU
+    that falls behind (see A) and misses a trigger; a decompression/stream stall.
+  - **Next:** capture mailbox / stream-pointer / MCU state at the moment of stall
+    (DDR diagnostic) to see what it's waiting on.
+
+### C. Intercom elevator: graphical corruption + background priority (#8)
+- **Symptom:** Lots of graphical corruption in the elevator, and background
+  **priority** problems (wrong layer ordering).
+- **Status:** Open.
+- **Leads:**
+  - Two parts: (1) graphics *corruption* — possibly a decompression path other
+    than the `0x81` one we fixed, or object/sprite data; (2) background
+    *priority* — the BG/sprite priority bits are wrong, which is a tile/sprite
+    attribute the MCU sets up.
+  - **Next:** determine whether the corruption is decompression (which format?)
+    vs object composition; check how priority is assigned for that scene.
+
+### D. 6-button controller support missing (#4)
+- **Symptom:** X/Y/Z/Mode not recognised; OSD "6 Buttons Mode" and the mapped
+  Mode button do nothing. 3-button works (game playable).
 - **Status:** Investigated, open.
-- **Notes / leads:**
-  - The core's `pad_io.sv` 6-button machinery is generic and works on other MD
-    games, so this is Paprium-specific.
+- **Leads:**
+  - Core `pad_io.sv` 6-button is generic and works on other MD games, so this is
+    Paprium-specific.
   - Disassembly: Paprium's main pad read at ROM `0xaae0` is a standard **3-button**
-    read (sets `A10009=$40`, one TH toggle, reads `A10003`). The **6-button
-    extended read isn't visible** in the static ROM — likely in MCU-decompressed
-    code or dynamically addressed, so we can't see how it diverges from the core.
-  - **Next:** a controller-port diagnostic to capture the actual TH-toggle
-    sequence Paprium emits vs the JCNT/state `pad_io` returns.
+    read (one TH toggle). The 6-button extended read isn't visible in the static
+    ROM (likely MCU-decompressed or dynamically addressed).
+  - **Next:** controller-port diagnostic to capture Paprium's TH-toggle sequence
+    vs the JCNT/state `pad_io` returns.
 
-### 2. Animation / enemy AI behaviour incorrect
-- **Symptom:** Some animations and enemy AI behaviour are wrong.
+### E. "12 Stage Clear" jingle doesn't play (#9)
+- **Symptom:** When the stage ends and the score appears, `12 Stage Clear.wav`
+  should play but doesn't.
 - **Status:** Open.
-- **Notes / leads:**
-  - The MCU drives the sprite/animation/object system and likely AI helpers
-    (firmware `paprium_sprite` / object + animation lists). So this is probably
-    MCU-firmware behaviour or MCU timing, not VDP/RTL.
-  - The `0x81` decompression fix (2026-06-22) corrected some graphics — re-check
-    which animations are *still* wrong now.
-  - Candidate causes: MCU command timing, an unimplemented/under-implemented MCU
-    feature, or animation data that depends on a still-imperfect code path.
+- **Leads:**
+  - BGM is requested by the MCU via MD+ commands → CDDA (`paprium_mdp_adapter`).
+    A specific cue not playing points to the track-request path.
+  - Candidates: track index/mapping for the cue; handling of **short / one-shot**
+    cues vs looping BGM; or the cue not being requested. **Likely shares a root
+    cause with F.**
+  - **Next:** log the MD+ track-request commands at stage-clear vs expected.
 
-### 3. Intercom elevator not working
-- **Symptom:** The elevator in the Intercom stage doesn't function.
+### F. "Punk TV screen" music doesn't play (#7)
+- **Symptom:** When the bad guys are watching TV, a Japanese girl is normally
+  singing — it never plays.
 - **Status:** Open.
-- **Notes / leads:**
-  - Likely a scripted-event / MCU-command interaction specific to that stage.
-  - Candidates: input that isn't registering (does it need a button tied to the
-    6-button issue?), an MCU command/response the core doesn't handle, or area-
-    specific data. **Next:** identify the elevator trigger (input vs MCU event).
-
-### 4. Subway station stall (before boarding the train)
-- **Symptom:** *Occasionally* the game gets stuck in the subway station before
-  you get on the train — enemies stop appearing and the screen stops scrolling.
-- **Status:** Open.
-- **Notes / leads:**
-  - "Occasionally" + "everything stops" = a **stall/race**, the game logic
-    waiting on something that doesn't arrive.
-  - Candidates: an MCU↔68000 mailbox handshake that intermittently hangs, a
-    decompression/stream-window stall, or a timing race in object spawning.
-  - **Next:** capture the mailbox / stream-pointer / MCU state at the moment of
-    the stall (DDR diagnostic) to see what it's waiting on.
-
-### 5. "12 Stage Clear.wav" (end-of-level jingle) doesn't play
-- **Symptom:** The stage-clear music (track 12) doesn't play at end of level.
-- **Status:** Open.
-- **Notes / leads:**
-  - BGM is requested by the MCU via MD+ commands, bridged to CDDA by
-    `paprium_mdp_adapter.sv`. A specific track not playing points to the
-    track-request path for that cue.
-  - Candidates: the track index/mapping for the stage-clear cue, handling of
-    **short / non-looping** cues vs looping BGM, or the cue simply not being
-    requested. **Likely shares a root cause with #6.**
-  - **Next:** log the MD+ track-request commands the MCU issues at stage-clear
-    and compare to the expected track number.
-
-### 6. Music on the "punk screens" doesn't play
-- **Symptom:** The music on the screens the punks see (in-game screen/cutscene)
-  doesn't play.
-- **Status:** Open.
-- **Notes / leads:**
-  - Same shape as #5 — a specific BGM cue not triggered/played. Probably the same
-    root cause (short/one-shot CDDA cues, or a track-request mapping gap in the
-    MD+ adapter). Investigate together with #5.
+- **Leads:** Same shape as E — a specific one-shot BGM cue not triggered/played.
+  Probably the same root cause (short/one-shot CDDA cues or a track-request gap).
+  Investigate together with E.
 
 ---
 
 ## Recently fixed (for context)
 
-- **Subway & other graphics glitches** — corrected `0x81` LZ decompressor in the
-  MCU firmware (GPGX/FBNeo routine vs the broken MAME one). *(2026-06-22)*
-- **CDDA played ~8% slow** — WAVs are 48 kHz; CDDA now consumes at 48 kHz for
-  Paprium. *(2026-06-22)*
-- **Battery save (4 KB SRAM)** — now persists; also stops the fake-8-bit intro
+- **Subway / train graphics corruption (#6)** — corrected the `0x81` LZ
+  decompressor in the MCU firmware (GPGX/FBNeo routine vs the broken MAME one).
+  Subway and a couple of other areas now render correctly. *(2026-06-22; pending
+  issue close)*
+- **CDDA played ~8% slow (part of #7's "sound issues")** — WAVs are 48 kHz; CDDA
+  now consumes at 48 kHz for Paprium. *(2026-06-22)*
+- **Battery save (4 KB SRAM)** — persists; also stops the fake-8-bit intro
   replaying. *(2026-06-21)*
 - **CDDA too quiet vs SFX** — +10 dB Paprium-only boost. *(2026-06-21)*
 - **Boot / graphics / CDDA / full cart SFX / SVP retained** — initial working
