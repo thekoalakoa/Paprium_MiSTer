@@ -88,15 +88,30 @@ always @(posedge clk) begin
 	end
 end
 
+// Paprium 6-button -> combo injection. Paprium's 6-button handshake doesn't work
+// (it reads as a 3-button pad), leaving X/Y/Z dead. When 6-button mode is OFF
+// (the working 3-button mode for Paprium) map them to the equivalent *simultaneous*
+// 3-button combos the game already reads, injected into the 3-button frames only:
+//   Y = Down + B,   X = B + C,   Z = A + B
+// Gated on ~MODE so real 6-button games (run with MODE on) are byte-for-byte
+// unaffected. Opposing Up is suppressed while Down is injected. Motion inputs
+// (e.g. the forward-forward-B dash) are out of scope - they need a timed sequence.
+wire combo  = ~MODE;
+wire J_A    = P_A    | (combo & P_Z);
+wire J_B    = P_B    | (combo & (P_Y | P_X | P_Z));
+wire J_C    = P_C    | (combo & P_X);
+wire J_DOWN = P_DOWN | (combo & P_Y);
+wire J_UP   = P_UP   & ~(combo & P_Y);
+
 wire [5:0] pdata;
 always @(posedge clk) begin
 	priority casex({SMS,JCNT,TH})
-		4'b1XXX: pdata <= { ~P_C,     ~P_B, ~P_RIGHT, ~P_LEFT, ~P_DOWN, ~P_UP}; 
+		4'b1XXX: pdata <= { ~P_C,     ~P_B, ~P_RIGHT, ~P_LEFT, ~P_DOWN, ~P_UP};
 		4'b0100: pdata <= { ~P_START, ~P_A,   1'b0,     1'b0,    1'b0,   1'b0};
 		4'b0110: pdata <= { ~P_START, ~P_A,   1'b1,     1'b1,    1'b1,   1'b1};
 		4'b0111: pdata <= { ~P_C,     ~P_B, ~P_MODE,  ~P_X,    ~P_Y,    ~P_Z };
-		4'b0XX1: pdata <= { ~P_C,     ~P_B, ~P_RIGHT, ~P_LEFT, ~P_DOWN, ~P_UP};
-		4'b0XX0: pdata <= { ~P_START, ~P_A,   1'b0,     1'b0,  ~P_DOWN, ~P_UP};
+		4'b0XX1: pdata <= { ~J_C,     ~J_B, ~P_RIGHT, ~P_LEFT, ~J_DOWN, ~J_UP};
+		4'b0XX0: pdata <= { ~P_START, ~J_A,   1'b0,     1'b0,  ~J_DOWN, ~J_UP};
 	endcase
 end
 

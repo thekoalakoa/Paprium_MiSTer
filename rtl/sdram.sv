@@ -92,6 +92,21 @@ reg        active = 0;
 reg  [2:0] ram_req = 0;
 wire [2:0] wr = {wrl2|wrh2,wrl1|wrh1,wrl0|wrh0};
 
+// Anti-starvation for port 2 (the Paprium MCU). The arbiter below is strict
+// fixed priority (refresh > port0 > port1 > port2), so under heavy port1
+// (console / VDP stream-window) traffic the MCU on port2 can be starved for
+// long stretches and fall behind on per-frame sprite/animation composition
+// (issue #10: animations skip, worse with more enemies). Count how long port2
+// has been waiting; once it exceeds STARVE2_LIMIT, let it win one arbitration
+// round ahead of port0/port1. It only fires when port2 is genuinely starved,
+// so non-Paprium cores (port2 = SVP) are unaffected in normal use. Reordering
+// whole accesses is functionally safe: each access completes atomically and the
+// per-port req/ack handshakes are independent - only timing/fairness changes.
+localparam [7:0] STARVE2_LIMIT = 8'd24;
+reg  [7:0] starve2 = 0;
+wire       port2_pending = (ack2 != req2);
+wire       boost2 = port2_pending && (starve2 >= STARVE2_LIMIT);
+
 reg [15:0] dout;
 
 
@@ -112,7 +127,13 @@ always @(posedge clk) begin
 	end
 
 	if (rfs_cnt == 425) rfs2 <= 1;
-	
+
+	// Track how long port2 (MCU) has been waiting unserved.
+	if (port2_pending) begin
+		if (starve2 != 8'hff) starve2 <= starve2 + 1'd1;
+	end else
+		starve2 <= 0;
+
 	if(state == STATE_IDLE && mode == MODE_NORMAL) begin
 		if (rfs) begin
 			rfs <= 0;
@@ -123,7 +144,7 @@ always @(posedge clk) begin
 			active <= 0;
 			state <= STATE_START;
 		end
-		else if (ack0 != req0) begin
+		else if (ack0 != req0 && !boost2) begin
 			{ba,a} <= addr0;
 			data <= din0;
 			we <= wr[0];
@@ -133,7 +154,7 @@ always @(posedge clk) begin
 			rfs <= rfs2;
 			state <= STATE_START;
 		end
-		else if (ack1 != req1) begin
+		else if (ack1 != req1 && !boost2) begin
 			{ba,a} <= addr1;
 			data <= din1;
 			we <= wr[1];

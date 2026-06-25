@@ -20,20 +20,41 @@ GitHub issue numbers are referenced as (#n).
 - **Symptom:** Characters slide without the walking animation, hit each other
   without the hit animation, or perform certain grabs without animation. **The
   more enemies on screen, the worse it gets.**
-- **Status:** Open — strongest lead so far.
-- **Leads:**
-  - The "scales with on-screen enemy count" behaviour is the key clue: it points
-    to the **MCU running out of per-frame processing time**. The MCU advances
-    each object's animation frame and composes sprites every frame; with many
-    objects it can't finish in the available window, so the 68000 keeps moving
-    positions while the MCU-side animation frame doesn't update → **sliding /
-    missing hit & grab animations**.
-  - Candidate root causes: NEORV32 MCU clock too slow vs the real cart MCU; a
-    per-frame object/time budget being exceeded; or an MCU↔68000 sync that drops
-    work when the MCU is late.
-  - **Next:** measure how long the MCU takes to process the object list per frame
-    vs the budget; check the NEORV32 clock; see if the firmware caps objects.
-  - May share a root cause with the subway stall (B) and elevator (C).
+- **Status:** Fix HW-tested — improved (2026-06-22). Anti-starvation build runs;
+  user reports noticeably fewer/no animation skips in dense scenes. Keeping
+  `STARVE2_LIMIT=24`; can lower further if any residual skipping is seen.
+- **Confirmed ours-specific:** user reports the real EverDrive Pro / cart does
+  **not** skip like this at the same enemy density. So it is not the inherent
+  Mega Drive VRAM-DMA ceiling — it's our port.
+- **Findings:**
+  - **MCU clock ruled out.** mega-ppm clocks the NEORV32 at **50 MHz**
+    (`top.sv`); our port runs it at **53.69 MHz** (`clk_sys`) — ~7% *faster*.
+  - **Mechanism = per-frame VRAM DMA budget.** Each frame the 68000 does
+    `cmd_AE_frame_start` → many `cmd_AD_obj_add` → `cmd_AF_frame_end`, with
+    `cmd_EC_vram_budget` setting the budget. `ppm_obj_frame_end()` (`mame.c`):
+    `dma_remaining = dma_budget - dma_total`, renders the draw list, and a **VRAM
+    slot cache** (`usage`/`age`) means only *changed* animations cost DMA. If the
+    MCU can't compose/emit a fresh tile in time, the object keeps its old VRAM
+    tile → **slide / missing hit & grab**.
+  - **ROOT CAUSE = shared-SDRAM port starvation.** mega-ppm gives the MCU a
+    *dedicated* SDRAM; we share one chip via `sdram.sv` with **strict fixed
+    priority refresh → port0 → port1 → port2**:
+    - port0 (`addr0`) = ROM download — idle during play
+    - port1 (`addr1`) = console 68000/VDP/Z80 + the **stream-window tile reads**
+    - port2 (`addr2`) = **Paprium MCU — lowest priority**
+    Port1 *always* beats port2. Dense scenes = heavy port1 stream traffic, so the
+    MCU starves. Worse, `paprium_mcu_mem.sv` issues **two 16-bit port2 round-trips
+    per 32-bit MCU access**, doubling the requests that lose every tie. The MCU
+    falls behind on reading anim data / writing composed tiles → effective budget
+    below real hardware → skipping that scales with enemy count.
+- **Proposed fix (low-risk, surgical):** add an **anti-starvation bump** in
+  `sdram.sv` — if `req2` stays pending while port1 keeps winning for more than N
+  arbitration rounds, let port2 win one access. Bounds the MCU's worst-case SDRAM
+  latency; the console only loses an occasional slot (and port0 is idle anyway).
+  Only triggers when port2 is genuinely starved, so it's safe for non-Paprium
+  cores (port2 = SVP then; may even help Virtua Racing). Needs a build + on-HW
+  test in a dense fight.
+- **May share a root cause with the subway stall (B).**
 
 ### B. Subway station stall before the train (#5)
 - **Symptom:** *Occasionally* stuck in the subway station after clearing enemies
@@ -51,19 +72,45 @@ GitHub issue numbers are referenced as (#n).
 ### C. Intercom elevator: graphical corruption + background priority (#8)
 - **Symptom:** Lots of graphical corruption in the elevator, and background
   **priority** problems (wrong layer ordering).
-- **Status:** Open.
-- **Leads:**
-  - Two parts: (1) graphics *corruption* — possibly a decompression path other
-    than the `0x81` one we fixed, or object/sprite data; (2) background
-    *priority* — the BG/sprite priority bits are wrong, which is a tile/sprite
-    attribute the MCU sets up.
-  - **Next:** determine whether the corruption is decompression (which format?)
-    vs object composition; check how priority is assigned for that scene.
+- **Status:** Open — the sprite-attribute fix had NO observable effect on HW.
+- **HW result (2026-06-25):** the field-wise priority/palette composition below
+  was built and tested — the elevator is still glitchy in the same way, at the
+  same point in the level. So the elevator sprites apparently do NOT set both the
+  tile and object priority/palette bits (the hypothesis was wrong). The change
+  did no damage to other scenes, so it's kept in V.04 but is **not** an elevator
+  fix and isn't claimed in the release notes. Next lead: the muted `0xB0`
+  `paprium_sprite_init` / `0x88` setup commands, or a different decode path.
+- **Confirmed:** also broken on EverDrive Pro → firmware, not core/VDP.
+- **Not decompression.** Verified our `0x80`/`0x81` decoders match GPGX exactly.
+- **Lead — XOR vs tile-precedence in the sprite attribute.** GPGX
+  (`paprium_sprite`, lines 1287-1289) builds each sprite's attribute field-wise:
+  `priority = tileP ? tileP : objP` (tile wins), `palette = tilePal ? tilePal :
+  objPal` (tile wins), `flip = tileFlip ^ objFlip`. Ours (`ppm_obj_render`,
+  `mame.c:544`) XORs the whole word:
+  `attrs = ((spr_data->attrs & 0xf8) << 8) ^ intf_obj->attrs ^ (vram_block+ofs)`.
+  These agree only while the object's priority/palette bits are 0 (most scenes).
+  When both the tile and the object set priority, XOR → 0 (sprite drops behind
+  the BG); when both set palette, XOR scrambles it (wrong colours). Matches the
+  elevator's "background priority + corruption" and its scene-specificity.
+- **Fix (firmware, moderate risk):** split `mame.c:544` to compose priority and
+  palette with tile-precedence and keep flip + tile-index as XOR/add, per GPGX.
+  Needs HW regression test on normal scenes (the all-XOR works everywhere else,
+  so confirm no other scene relied on it). Orthogonal to audio, so it can ride in
+  the same firmware build as the music fix and be judged independently (sprite
+  regressions vs audio).
+- **Also muted in our firmware but real in GPGX (lower priority leads):** `0xB0`
+  `paprium_sprite_init`, `0x88` `paprium_audio_setting`. Check if the elevator
+  setup uses `0xB0` if the attribute fix isn't sufficient.
 
 ### D. 6-button controller support missing (#4)
 - **Symptom:** X/Y/Z/Mode not recognised; OSD "6 Buttons Mode" and the mapped
   Mode button do nothing. 3-button works (game playable).
-- **Status:** Investigated, open.
+- **Status:** WORKAROUND SHIPPED in V.04 (combo injection — HW-verified working).
+- **HW result (2026-06-25):** the combo injection works on hardware — X/Y/Z now
+  do their mapped moves. Mapping may need tuning (Z=A+B tentative). Confirmed
+  **Super Street Fighter II in 6-button mode is unaffected** (the `~MODE` gate
+  works). See the workaround note below. The real handshake is still unsolved
+  (kept as a future lead).
 
 - **The 6-button handshake (per community reference on #4):** the pad has an
   internal counter that advances on every TH (bit 6 / select) transition and
@@ -102,25 +149,48 @@ GitHub issue numbers are referenced as (#n).
     threshold or the bus timing during Paprium's read is the culprit.
   - Locate Paprium's real (multi-toggle) 6-button read routine.
 
-### E. "12 Stage Clear" jingle doesn't play (#9)
-- **Symptom:** When the stage ends and the score appears, `12 Stage Clear.wav`
-  should play but doesn't.
-- **Status:** Open.
-- **Leads:**
-  - BGM is requested by the MCU via MD+ commands → CDDA (`paprium_mdp_adapter`).
-    A specific cue not playing points to the track-request path.
-  - Candidates: track index/mapping for the cue; handling of **short / one-shot**
-    cues vs looping BGM; or the cue not being requested. **Likely shares a root
-    cause with F.**
-  - **Next:** log the MD+ track-request commands at stage-clear vs expected.
+- **Workaround being tested — combo injection (`pad_io.sv`).** Rather than fix the
+  handshake, map X/Y/Z to the equivalent *simultaneous* 3-button combos the game
+  already reads, injected into the 3-button frames. User-chosen mapping:
+  `Y = Down+B`, `X = B+C`, `Z = A+B` (Z tentative). Gated on `~MODE` so real
+  6-button games (run with MODE on) are byte-for-byte unaffected; Up is masked
+  while Down is injected. **Only works for simultaneous combos — motion inputs
+  (e.g. forward-forward-B dash) are out of scope.** To use it, set OSD
+  "6 Buttons Mode" **OFF**. If good, follow up with a dedicated OSD toggle +
+  `paprium_active` gating instead of reusing `~MODE`.
 
-### F. "Punk TV screen" music doesn't play (#7)
-- **Symptom:** When the bad guys are watching TV, a Japanese girl is normally
-  singing — it never plays.
-- **Status:** Open.
-- **Leads:** Same shape as E — a specific one-shot BGM cue not triggered/played.
-  Probably the same root cause (short/one-shot CDDA cues or a track-request gap).
-  Investigate together with E.
+### E. "12 Stage Clear" jingle doesn't play (#9)  + F. "Punk TV" song (#7)
+- **Symptom:** Specific one-shot music cues never play — the stage-clear jingle
+  (`12 Stage Clear.wav`) on the score screen, and the punk-TV song. General level
+  BGM is fine.
+- **Status:** FIXED in V.04 — cues now play (HW-verified). Minor caveat below.
+- **HW result (2026-06-25):** Stage Clear and Continue (and the other one-shots)
+  now play — the silence is fixed. **Caveat:** they currently *loop* instead of
+  playing once. We use `mdp_play_once` (`MDP_CMD_PLAY_S`, loop=0), so the CDDA
+  playback path isn't honouring the no-loop flag at end-of-track — a cosmetic
+  follow-up (`mdp_audio` / `md_plus` track-end handling). Shipped as-is.
+- **Confirmed:** also silent on the real EverDrive Pro (same firmware gap).
+- **Earlier 0x95/0x96 theory was WRONG.** The Genesis Plus GX LittleManProject
+  source (`core/cart_hw/paprium.h`) shows 0x95/0x96 are **no-ops there too**, and
+  0xD6 (`paprium_music_special`) is debug-only. They are not the cue path.
+- **Actual root cause — `cmd_8C` stops one-shot cues.** All music, including the
+  one-shots, goes through `0x8C`. GPGX's handler (`paprium_music`) **always plays**
+  `track & 0x7F`. Ours (`cmd_8C_bgm_play`) instead does
+  `if (arg & 0x80) mdp_play(arg & 0x7f); else mdp_stop();` — so any cue sent with
+  **bit 7 clear is STOPPED instead of played.** The one-shot cues (Stage Clear,
+  Continue, Game Over, High Score, Ending, punk-TV) are sent bit-7-clear → killed.
+  Normal looping BGM is sent bit-7-set → plays → that's why general music works.
+- **Mapping is already correct.** GPGX maps each game music index → a named track;
+  our `paprium.cue` is built in that exact game-index order (CD track N = game
+  index N, `Blank.wav` filling gaps). Verified: "12 Stage Clear.wav" = TRACK 53 =
+  index 0x35, so `mdp_play(0x35)` already resolves to the right file. No remap
+  needed.
+- **Fix (firmware only, low-risk):** in `cmd_8C_bgm_play`, don't stop on
+  bit-7-clear. `track = arg & 0x7f; if (track==0) mdp_stop(); else if (arg & 0x80)
+  mdp_play(track) /*loop, PLAY_L*/ else mdp_play_once(track) /*one-shot, PLAY_S*/`.
+  Add `mdp_play_once()` issuing `MDP_CMD_PLAY_S (0x1100)`; the adapter already
+  decodes 0x11 (`paprium_mdp_adapter.sv` → loop=0). Only changes the bit-7-clear
+  case, which was already broken — no regression to working looping BGM.
 
 ---
 
