@@ -92,6 +92,9 @@ localparam CONF_STR = {
 	"H6D0R[16],Load Backup RAM;",
 	"H6D0R[17],Save Backup RAM;",
 	"-;",
+	"O[59],Paprium Arcade Mode,Locked,Unlocked;",
+	"O[68:64],Paprium Arcade Stage,Off,Block 888,Intercom,MTS,Bion Mart,Roof-Top,Police HQ,Ice Factory,Reformatory,Sanophix PU,Central Park,Green Cross,The Docks,Golden Of Seas,Deep Storage,Aquaworld,Blue Bar,Powder-Zone,Bohpal B-2,Juvanium,Sky Spa,Digniti KTV,The Vault,Sanophix Labs,The Solarium,Arena;",
+	"-;",
 
 	"P1,Audio & Video;",
 	"P1O[49:48],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -672,6 +675,9 @@ cartridge cartridge
 	.clk_ram(clk_ram),
 	.reset(sys_reset),
 	.reset_sdram(~pll_locked),
+	.arcade_unlock(status[59]),
+	.coin_btn(joy0[8]),
+	.stage_sel(status[68:64]),
 
 	.SDRAM_CLK(SDRAM_CLK),
 	.SDRAM_CKE(SDRAM_CKE),

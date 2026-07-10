@@ -55,6 +55,28 @@ sound effects. The SVP chip (Virtua Racing) is retained.
   straight-wired, so `rtl/PAPRIUM/paprium_mcu_mem.sv` keeps the byte-enables
   straight to reproduce the same net layout.
 
+## Extras (V.05)
+
+- **Arcade Mode unlock** (main OSD page): applies adroxe's `paprium_arcade.ips`
+  (<https://github.com/adroxe/Paprium-Arcade>) on the fly as a ROM-read
+  substitution — the ROM file is never modified. Unlock + reset = "ARCADE
+  PAPRIUM" (friendly fire on, Insert Coin/credits). The IPS's Mode-button
+  credit check is re-targeted at an FPGA "coin chute" register, so **pressing
+  the MiSTer-mapped Mode button (port 1) inserts a coin** — no 6-button pad
+  protocol involved; works in 3-button mode.
+- **Arcade Stage select** (main OSD page): boots arcade mode into any of the 25
+  stages (per krikzz: ROM start-stage byte at `0x0B0A15`, substituted live).
+- **One-shot music (cue requirement):** Main_MiSTer's MD+ player loops every
+  track unless the cue says otherwise. Your `paprium.cue` needs `REM NOLOOP`
+  after the `INDEX 01` line of the one-shot tracks (12 Continue, 29 Game Over,
+  36 High Score, 53 Stage Clear) — or just use the reference
+  [`paprium.cue`](paprium.cue) shipped here.
+- **Controls:** play Paprium with OSD "6 Buttons Mode" = **No** — X/Y/Z are
+  mapped to combos (Y=Down+B, X=B+C, Z=A+B) and Mode inserts coins. (In
+  6-button mode X/Y/Z do nothing: the game's own 6-button read doesn't work on
+  this port — same as EverDrive — and the combo injection disables itself to
+  keep real 6-button games untouched.)
+
 ## Building
 
 Quartus Prime 25.1 Standard. Open `MegaDrive.qpf` and run a full compilation, or:

@@ -72,7 +72,28 @@ GitHub issue numbers are referenced as (#n).
 ### C. Intercom elevator: graphical corruption + background priority (#8)
 - **Symptom:** Lots of graphical corruption in the elevator, and background
   **priority** problems (wrong layer ordering).
-- **Status:** Open — the sprite-attribute fix had NO observable effect on HW.
+- **Status:** Open — narrowed to a DECOMPRESSION/decode issue (not sprites).
+- **Ruled out (2026-07-04): paged stream window.** Implemented the GPGX/real-cart
+  page semantics for the 0xC000 window (0xDA size+mode, address-indexed reads,
+  page-pop on reading 0xC000) as firmware+RTL. Elevator UNCHANGED and it
+  **regressed boss animations** — fully rolled back (RTL reverted to V.04,
+  firmware pagecfg removed). Conclusion: krikzz's linear stream model is what
+  the game's loaders actually expect on cart hardware; GPGX's page model is an
+  emulator-side construct, not a protocol we're missing.
+- **Next serious step:** DDR-log instrumentation (log 0xDA/0xDB args + window
+  access pattern over SSH) and diff against an instrumented GPGX run.
+- **HW evidence (2026-06-27):** the corruption is a clean rectangular **block of
+  garbage tiles** drawn as a high-priority **foreground plane** over the top of
+  the scene (the actual scene under it renders fine) — extra garbage that isn't
+  in the original. Original-mode-only (a branch Arcade doesn't have).
+  - **Cap-at-80 probe → no change**, so it's NOT a >80-sprite SAT overrun.
+  - So a decode/decompress path is laying garbage tiles into that plane's VRAM.
+    `0x80`/`0x81` are verified vs GPGX, so suspect the **orchestration**: our
+    `0xF2` block-unpack (GPGX has it disabled as a debug viewer) or the `0xDA`
+    decode-destination (ours → workspace, GPGX → separate `decoder_ram`).
+  - Next: `0xF2`-mute probe; if null, dump the scene's DMA-command list to the
+    battery save (`.srm`) for offline analysis.
+- **(superseded)** the sprite-attribute fix had NO observable effect on HW.
 - **HW result (2026-06-25):** the field-wise priority/palette composition below
   was built and tested — the elevator is still glitchy in the same way, at the
   same point in the level. So the elevator sprites apparently do NOT set both the
@@ -106,6 +127,16 @@ GitHub issue numbers are referenced as (#n).
 - **Symptom:** X/Y/Z/Mode not recognised; OSD "6 Buttons Mode" and the mapped
   Mode button do nothing. 3-button works (game playable).
 - **Status:** WORKAROUND SHIPPED in V.04 (combo injection — HW-verified working).
+- **V.05 note:** combos require OSD "6 Buttons Mode" = **No** (in 6-button mode
+  the injection disables itself to protect real 6-button games, and Paprium's
+  own 6-button read is still broken, so X/Y/Z are dead there). The V.05 arcade
+  coin chute proves the better method: FPGA-driven "virtual pad" registers read
+  by injected cart code, bypassing the pad protocol entirely. **V.06 plan:**
+  extend it to X/Y/Z/Mode by ORing FPGA button state into the game's pad struct
+  (port 1: held `$FF7028`, pressed `$FF702A`, type `$FF7035`; stride 0x10 per
+  port) from the existing 0xB2392 hook — needs one disassembly pass of the
+  210-byte pad-read function (0xB22C2-0xB2394) to confirm held/pressed
+  semantics first.
 - **HW result (2026-06-25):** the combo injection works on hardware — X/Y/Z now
   do their mapped moves. Mapping may need tuning (Z=A+B tentative). Confirmed
   **Super Street Fighter II in 6-button mode is unaffected** (the `~MODE` gate
@@ -149,6 +180,13 @@ GitHub issue numbers are referenced as (#n).
     threshold or the bus timing during Paprium's read is the culprit.
   - Locate Paprium's real (multi-toggle) 6-button read routine.
 
+- **Ruled out (2026-07-04) — the GPGX `ram[0x192]=0x3634` poke.** Tested on
+  EverDrive: no effect. Explanation: 0x190-0x197 is the standard MD ROM header
+  I/O-support string ("JC64"), and mega-ppm's boot `memcpy(ramdp, flash, 8192)`
+  already places it — the poke wrote the value that was already there. GPGX
+  needs the poke only because it doesn't copy the ROM's low 8KB into its cart
+  RAM. Not a capability switch; lead closed.
+
 - **Workaround being tested — combo injection (`pad_io.sv`).** Rather than fix the
   handshake, map X/Y/Z to the equivalent *simultaneous* 3-button combos the game
   already reads, injected into the 3-button frames. User-chosen mapping:
@@ -163,12 +201,23 @@ GitHub issue numbers are referenced as (#n).
 - **Symptom:** Specific one-shot music cues never play — the stage-clear jingle
   (`12 Stage Clear.wav`) on the score screen, and the punk-TV song. General level
   BGM is fine.
-- **Status:** FIXED in V.04 — cues now play (HW-verified). Minor caveat below.
-- **HW result (2026-06-25):** Stage Clear and Continue (and the other one-shots)
-  now play — the silence is fixed. **Caveat:** they currently *loop* instead of
-  playing once. We use `mdp_play_once` (`MDP_CMD_PLAY_S`, loop=0), so the CDDA
-  playback path isn't honouring the no-loop flag at end-of-track — a cosmetic
-  follow-up (`mdp_audio` / `md_plus` track-end handling). Shipped as-is.
+- **Status:** FIXED in V.04 — cues play. Loop = MiSTer RTL bug (firmware correct).
+- **HW result (2026-06-25):** Stage Clear / Continue play — silence fixed. They
+  *loop* on MiSTer instead of playing once.
+- **Loop root cause SOLVED (2026-07-04) — it's the cue sheet, not RTL.** The
+  EverDrive honours `PLAY_S` natively (plays once — firmware correct). On MiSTer
+  the chain is: adapter sets `mdp_track_loop=0` ✓ → `hps_ext` forwards it as
+  cmd-flag bit 4 ✓ → **Main_MiSTer `support/megadrive/mdplus.cpp` defines
+  `FLAG_LOOP` but NEVER READS IT.** End-of-track looping is decided per track
+  from the **cue sheet**: `REM LOOP [sector]` / `REM NOLOOP` directives, with
+  **default = loop** (set at each track's `INDEX 01` line, so `REM NOLOOP` must
+  come AFTER the INDEX line).
+- **Fix (no code, no rebuild): add `REM NOLOOP` to the one-shot tracks in
+  `paprium.cue`.** Done for the confirmed one-shots: track 12 (Continue), 29
+  (Game Over), 36 (High Score), 53 (Stage Clear). **HW-verified working
+  (2026-07-10).** Reference cue shipped in `docs/paprium.cue`. Candidates to
+  confirm: the punk-TV song (#7 — track number TBD), 58 (Ending), 03 (1988
+  Commercial).
 - **Confirmed:** also silent on the real EverDrive Pro (same firmware gap).
 - **Earlier 0x95/0x96 theory was WRONG.** The Genesis Plus GX LittleManProject
   source (`core/cart_hw/paprium.h`) shows 0x95/0x96 are **no-ops there too**, and
