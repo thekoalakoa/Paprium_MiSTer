@@ -5,7 +5,8 @@ A MiSTer Mega Drive core fork bringing Everdrive Pro Style Paprium support to Mi
 This project builds on years of community reverse-engineering, preservation, emulator work, and flash-cart development.
 
 Based on prior work by:
-Krikzz / mega-ppm
+Krikzz / mega-ppm (including the first-level door fix, shared ahead of release)
+adroxe / Paprium-Arcade - the Arcade Mode unlock IPS (https://github.com/adroxe/Paprium-Arcade)
 Project Little Man
 TheHpman / MAME Paprium research
 MAVProxyUser / Genesis Plus GX Paprium PR
