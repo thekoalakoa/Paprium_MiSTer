@@ -678,6 +678,9 @@ cartridge cartridge
 	.arcade_unlock(status[59]),
 	.coin_btn(joy0[8]),
 	.stage_sel(status[68:64]),
+	.vpad_en(status[5]),
+	.vpad1({joy0[8], joy0[11], joy0[10], joy0[9]}),
+	.vpad2({joy1[8], joy1[11], joy1[10], joy1[9]}),
 
 	.SDRAM_CLK(SDRAM_CLK),
 	.SDRAM_CKE(SDRAM_CKE),

@@ -68,6 +68,9 @@ module cartridge
 	input             arcade_unlock,
 	input             coin_btn,
 	input       [4:0] stage_sel,
+	input             vpad_en,    // Paprium virtual 6-button (hook injection)
+	input       [3:0] vpad1,      // {MODE,Z,Y,X} held, port 1 (raw joystick)
+	input       [3:0] vpad2,
 
 	output reg        gun_type,
 	output reg  [7:0] gun_sensor_delay,
@@ -198,30 +201,54 @@ wire [15:0] rom_data;
 reg         rom_rd;
 reg         dtack_ext;
 
-// Paprium hidden Arcade Mode unlock, based on adroxe's paprium_arcade.ips
-// (github.com/adroxe/Paprium-Arcade), applied on the fly as a ROM-read
-// substitution: two BEQ->NOP so the Grand Stick III DIP check always falls
-// through and sends the 0x810F arcade command, plus a JMP hook replacing the
-// pad-read routine's unlk/rts into a code cave in unused FF padding.
-// DEVIATION from the IPS: adroxe's cave checks the Mode bit of the game's
-// 6-button read result ($ff702a) - dead on this port (issue #4). Our cave
-// instead polls a "coin chute": ROM word 0x11C600 (also FF padding), which we
-// substitute with 1 while a Mode press is latched. Cave:
-//   unlk a6; tst.w $11c600.l; beq.b +6; jsr $b5960.l (add credit); rts
-// The latch gives one coin per press of the MiSTer-mapped Mode button (port 1,
-// joy bit direct - no pad protocol involved, works in 3-button mode).
+// Paprium hidden Arcade Mode unlock (adroxe's paprium_arcade.ips) + virtual
+// 6-button, both applied on the fly as ROM-read substitution. Groups:
+//  1 = arcade-only DIP-check BEQ->NOP (adroxe: falls through, sends 0x810F),
+//  2 = pad-hook + code cave + FPGA registers (serves arcade coin AND virtual
+//      6-button; a disabled feature's registers read as 0).
+// Cave v3, hooked from the pad-read routine's unlk/rts at 0xB2392 (word
+// 0x591C9), mirroring that routine's own or.w merges of ports 3/4 into 1/2:
+//   unlk a6
+//   move.w $11C604,d0 ; or.w d0,$FF7028   ; P1 held  XYZ/Mode (SGDK bits 8-11)
+//   move.w $11C608,d0 ; or.w d0,$FF702A   ; P1 just-pressed (FPGA edge latch)
+//   move.w $11C606,d0 ; or.w d0,$FF7038   ; P2 held
+//   move.w $11C60A,d0 ; or.w d0,$FF703A   ; P2 just-pressed
+//   tst.w  $11C600 ; beq.b +6 ; jsr $B5960.l ; rts   (arcade coin chute)
 // Keyed on the latched rom_addr (stable when the SDRAM read completes); the
 // patch addresses sit far below the Paprium stream workspace so stream reads
 // can never alias. Gated on paprium_quirk so no other cart is ever touched.
 reg  [2:0]  coin_sync;
 reg         coin_pending;
-wire        coin_served = (rom_req == rom_ack) & rom_rd & arcade_unlock & paprium_quirk &
-                          (rom_addr[23:1] == 23'h8E300) & coin_pending;
+wire        hook_en     = paprium_quirk & (arcade_unlock | vpad_en);
+wire        patch_serve = (rom_req == rom_ack) & rom_rd & hook_en;
+wire        coin_served = patch_serve & (rom_addr[23:1] == 23'h8E300) & coin_pending;
+wire        vp1_served  = patch_serve & (rom_addr[23:1] == 23'h8E304);
+wire        vp2_served  = patch_serve & (rom_addr[23:1] == 23'h8E305);
+
+reg  [3:0] vp1_d, vp2_d, vp1_press, vp2_press;
 always @(posedge clk_ram) begin
 	coin_sync <= {coin_sync[1:0], coin_btn};
 	if(coin_sync[1] & ~coin_sync[2]) coin_pending <= 1;   // press edge
 	else if(coin_served)             coin_pending <= 0;   // one coin per press
+
+	vp1_d <= vpad1;
+	vp2_d <= vpad2;
+	if(~vpad_en) begin
+		vp1_press <= 0;
+		vp2_press <= 0;
+	end
+	else begin
+		vp1_press <= (vp1_served ? 4'd0 : vp1_press) | (vpad1 & ~vp1_d);
+		vp2_press <= (vp2_served ? 4'd0 : vp2_press) | (vpad2 & ~vp2_d);
+	end
 end
+
+// {MODE,Z,Y,X} -> SGDK word bits 11:8
+wire [15:0] vp1_held_w  = vpad_en ? {4'd0, vpad1,     8'd0} : 16'd0;
+wire [15:0] vp2_held_w  = vpad_en ? {4'd0, vpad2,     8'd0} : 16'd0;
+wire [15:0] vp1_press_w = vpad_en ? {4'd0, vp1_press, 8'd0} : 16'd0;
+wire [15:0] vp2_press_w = vpad_en ? {4'd0, vp2_press, 8'd0} : 16'd0;
+wire [15:0] coin_w      = (arcade_unlock & paprium_quirk) ? {15'd0, coin_pending} : 16'd0;
 
 // Paprium arcade-mode stage select (per krikzz): ROM byte 0x0B0A15 is the
 // arcade start stage (0x01 = BLOCK 888 default). Substitute the containing
@@ -231,32 +258,62 @@ wire [7:0]  stage_byte = (stage_sel == 5'd25) ? 8'h1E : {3'b000, stage_sel};
 wire        stage_hit  = (rom_addr[23:1] == 23'h5850A) & (stage_sel != 0) & paprium_quirk;
 wire [15:0] stage_data = {8'h00, stage_byte};
 
-reg  [15:0] arcade_data;
-reg         arcade_match;
-wire        arcade_hit = arcade_match & arcade_unlock & paprium_quirk;
+reg  [15:0] patch_data;
+reg  [1:0]  patch_grp;
+wire        patch_hit = (patch_grp == 2'd1) ? (paprium_quirk & arcade_unlock) :
+                        (patch_grp == 2'd2) ? hook_en : 1'b0;
 always @(*) begin
-	arcade_match = 1;
+	patch_grp  = 2'd0;
+	patch_data = 16'h0000;
 	case(rom_addr[23:1])
-		// 0xB5AB8/0xB5ACC: BEQ -> NOP (force arcade DIP path)
-		23'h5AD5C: arcade_data = 16'h4E71;
-		23'h5AD66: arcade_data = 16'h4E71;
-		// 0xB2392: unlk a6; rts -> jmp $11c560.l
-		23'h591C9: arcade_data = 16'h4EF9;
-		23'h591CA: arcade_data = 16'h0011;
-		23'h591CB: arcade_data = 16'hC560;
-		// 0x11C560 code cave (see header comment)
-		23'h8E2B0: arcade_data = 16'h4E5E;
-		23'h8E2B1: arcade_data = 16'h4A79;
-		23'h8E2B2: arcade_data = 16'h0011;
-		23'h8E2B3: arcade_data = 16'hC600;
-		23'h8E2B4: arcade_data = 16'h6706;
-		23'h8E2B5: arcade_data = 16'h4EB9;
-		23'h8E2B6: arcade_data = 16'h000B;
-		23'h8E2B7: arcade_data = 16'h5960;
-		23'h8E2B8: arcade_data = 16'h4E75;
-		// 0x11C600: the coin chute register
-		23'h8E300: arcade_data = {15'd0, coin_pending};
-		default: begin arcade_data = 16'h0000; arcade_match = 0; end
+		// group 1: 0xB5AB8/0xB5ACC BEQ -> NOP (force arcade DIP path)
+		23'h5AD5C: begin patch_grp = 2'd1; patch_data = 16'h4E71; end
+		23'h5AD66: begin patch_grp = 2'd1; patch_data = 16'h4E71; end
+		// group 2: 0xB2392 hook -> jmp $11C560
+		23'h591C9: begin patch_grp = 2'd2; patch_data = 16'h4EF9; end
+		23'h591CA: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h591CB: begin patch_grp = 2'd2; patch_data = 16'hC560; end
+		// group 2: cave v3 @0x11C560 (vpad inject + coin chute)
+		23'h8E2B0: begin patch_grp = 2'd2; patch_data = 16'h4E5E; end
+		23'h8E2B1: begin patch_grp = 2'd2; patch_data = 16'h3039; end
+		23'h8E2B2: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h8E2B3: begin patch_grp = 2'd2; patch_data = 16'hC604; end
+		23'h8E2B4: begin patch_grp = 2'd2; patch_data = 16'h8179; end
+		23'h8E2B5: begin patch_grp = 2'd2; patch_data = 16'h00FF; end
+		23'h8E2B6: begin patch_grp = 2'd2; patch_data = 16'h7028; end
+		23'h8E2B7: begin patch_grp = 2'd2; patch_data = 16'h3039; end
+		23'h8E2B8: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h8E2B9: begin patch_grp = 2'd2; patch_data = 16'hC608; end
+		23'h8E2BA: begin patch_grp = 2'd2; patch_data = 16'h8179; end
+		23'h8E2BB: begin patch_grp = 2'd2; patch_data = 16'h00FF; end
+		23'h8E2BC: begin patch_grp = 2'd2; patch_data = 16'h702A; end
+		23'h8E2BD: begin patch_grp = 2'd2; patch_data = 16'h3039; end
+		23'h8E2BE: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h8E2BF: begin patch_grp = 2'd2; patch_data = 16'hC606; end
+		23'h8E2C0: begin patch_grp = 2'd2; patch_data = 16'h8179; end
+		23'h8E2C1: begin patch_grp = 2'd2; patch_data = 16'h00FF; end
+		23'h8E2C2: begin patch_grp = 2'd2; patch_data = 16'h7038; end
+		23'h8E2C3: begin patch_grp = 2'd2; patch_data = 16'h3039; end
+		23'h8E2C4: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h8E2C5: begin patch_grp = 2'd2; patch_data = 16'hC60A; end
+		23'h8E2C6: begin patch_grp = 2'd2; patch_data = 16'h8179; end
+		23'h8E2C7: begin patch_grp = 2'd2; patch_data = 16'h00FF; end
+		23'h8E2C8: begin patch_grp = 2'd2; patch_data = 16'h703A; end
+		23'h8E2C9: begin patch_grp = 2'd2; patch_data = 16'h4A79; end
+		23'h8E2CA: begin patch_grp = 2'd2; patch_data = 16'h0011; end
+		23'h8E2CB: begin patch_grp = 2'd2; patch_data = 16'hC600; end
+		23'h8E2CC: begin patch_grp = 2'd2; patch_data = 16'h6706; end
+		23'h8E2CD: begin patch_grp = 2'd2; patch_data = 16'h4EB9; end
+		23'h8E2CE: begin patch_grp = 2'd2; patch_data = 16'h000B; end
+		23'h8E2CF: begin patch_grp = 2'd2; patch_data = 16'h5960; end
+		23'h8E2D0: begin patch_grp = 2'd2; patch_data = 16'h4E75; end
+		// group 2: FPGA registers @0x11C600-0x11C60A
+		23'h8E300: begin patch_grp = 2'd2; patch_data = coin_w;      end
+		23'h8E302: begin patch_grp = 2'd2; patch_data = vp1_held_w;  end
+		23'h8E303: begin patch_grp = 2'd2; patch_data = vp2_held_w;  end
+		23'h8E304: begin patch_grp = 2'd2; patch_data = vp1_press_w; end
+		23'h8E305: begin patch_grp = 2'd2; patch_data = vp2_press_w; end
+		default: ;
 	endcase
 end
 
@@ -267,7 +324,7 @@ always @(posedge clk_ram) begin
 
 	if(rom_req == rom_ack) begin
 		if(rom_rd) begin
-			cart_data <= arcade_hit ? arcade_data : stage_hit ? stage_data : rom_data;
+			cart_data <= patch_hit ? patch_data : stage_hit ? stage_data : rom_data;
 			if(cart_cs_ext) dtack_ext <= 1;
 		end
 		rom_rd <= 0;
