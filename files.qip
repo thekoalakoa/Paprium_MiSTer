@@ -35,6 +35,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_fetch.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_buf.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_play.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_ima_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_pcm_load.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/synch_3.sv
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_package.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_top_stdlogic.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_wishbone.vhd

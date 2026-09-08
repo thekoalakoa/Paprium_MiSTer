@@ -26,7 +26,7 @@ assign ADC_BUS  = 'Z;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign BUTTONS   = osd_btn;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-// DDRAM driven by mdp_audio for CDDA PCM streaming
+// DDRAM: Paprium PPAD blob fetch/load, or mdp_audio ring for non-Paprium MD+
 
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
@@ -78,6 +78,7 @@ localparam CONF_STR = {
 	"MegaDrive;UART31250,MIDI;",
 	"FS1,BINGENMD ;",
 	"FS2,SMS;",
+	"FS3,PCM;",
 	"-;",
 	"O[7:6],Region,JP,US,EU;",
 	"O[9:8],Auto Region,Header,File Ext,Disabled;",
@@ -224,10 +225,9 @@ wire [11:0] joystick_0,joystick_1,joystick_2,joystick_3,joystick_4;
 wire  [7:0] joy0_x,joy0_y,joy1_x,joy1_y;
 wire        ioctl_download;
 wire        ioctl_wr;
-wire [24:0] ioctl_addr;
+wire [26:0] ioctl_addr;
 wire [15:0] ioctl_data;
 wire  [7:0] ioctl_index;
-wire        ioctl_wait;
 
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
@@ -308,6 +308,9 @@ wire [1:0] gun_mode = status[41:40];
 wire       gun_btn_mode = status[42];
 
 wire cart_download = ioctl_download & (ioctl_index[4:0] == 1 || ioctl_index[4:0] == 2);
+wire pcm_download  = ioctl_download & (ioctl_index[5:0] == 6'd3); // FS3 paprium.pcm (≤ ioctl addr width)
+wire pcm_ioctl_wait;
+wire ioctl_wait = pcm_download ? pcm_ioctl_wait : 1'b0;
 wire code_download = ioctl_download & &ioctl_index;
 wire tmss_download = ioctl_download & !ioctl_index;
 
@@ -431,7 +434,7 @@ wire        mdp_dtack;
 wire        mdp_active;
 wire [15:0] mdp_last_cmd;
 // MD+ command signals, muxed between the 68k path (md_plus -> mdplus_*) and the
-// Paprium MCU path (cartridge adapter -> ppm_*). Consumed by hps_ext + mdp_audio.
+// Paprium MCU path (cartridge adapter -> ppm_*). Paprium → Pocket CDDA; else → hps_ext + mdp_audio.
 wire        mdplus_mdp_track_request,  ppm_mdp_track_request;
 wire  [7:0] mdplus_mdp_track_num,      ppm_mdp_track_num;
 wire        mdplus_mdp_track_loop,     ppm_mdp_track_loop;
@@ -453,10 +456,13 @@ wire        ppm_mdp_active;
 wire signed [15:0] paprium_sfx_l;
 wire signed [15:0] paprium_sfx_r;
 
-// MD+ status from the HPS bridge (declared here so the cartridge instance above
-// can read them; driven by hps_ext below).
+// MD+ status: HPS (non-Paprium) or Pocket CDDA fetch (Paprium).
 wire        mdp_hps_playing;
 wire  [7:0] mdp_hps_current_track;
+wire        mdp_pcm_playing;
+wire  [7:0] mdp_pcm_current_track;
+wire        mdp_status_playing = paprium_active ? mdp_pcm_playing : mdp_hps_playing;
+wire  [7:0] mdp_status_track   = paprium_active ? mdp_pcm_current_track : mdp_hps_current_track;
 
 // The stock core uses the VDP's early DMA OE to hide SDRAM latency for ordinary
 // ROM reads. Paprium's 0xC000-0xFFFF window is not an ordinary ROM read: each
@@ -739,8 +745,8 @@ cartridge cartridge
 	.mdp_volume(ppm_mdp_volume),
 	.mdp_volume_request(ppm_mdp_volume_request),
 	.mdp_active(ppm_mdp_active),
-	.mdp_playing(mdp_hps_playing),
-	.mdp_current_track(mdp_hps_current_track),
+	.mdp_playing(mdp_status_playing),
+	.mdp_current_track(mdp_status_track),
 	.paprium_sfx_l(paprium_sfx_l),
 	.paprium_sfx_r(paprium_sfx_r),
 
@@ -753,8 +759,8 @@ cartridge cartridge
 // MD+ Overlay (CDDA command intercept)
 ///////////////////////////////////////////////////
 
-// HPS ↔ FPGA bridge for MD+ status + audio pointer exchange
-// (mdp_hps_playing / mdp_hps_current_track declared earlier for the cartridge mux)
+// HPS ↔ FPGA bridge for MD+ status + audio pointer exchange (non-Paprium only).
+// Paprium BGM is Pocket CDDA/pcm — do not forward ppm_* into EXT_BUS / mdplus.cpp.
 wire [15:0] mdp_audio_rd_ptr;
 wire [15:0] mdp_audio_wr_ptr;
 wire        mdp_audio_active;
@@ -765,14 +771,14 @@ hps_ext hps_ext
 	.reset(sys_reset),
 	.EXT_BUS(EXT_BUS),
 
-	.mdp_track_request(mdp_track_request),
-	.mdp_track_num(mdp_track_num),
-	.mdp_track_loop(mdp_track_loop),
-	.mdp_stop_request(mdp_stop_request),
-	.mdp_fade_sectors(mdp_fade_sectors),
-	.mdp_resume_request(mdp_resume_request),
-	.mdp_volume(mdp_volume),
-	.mdp_volume_request(mdp_volume_request),
+	.mdp_track_request (paprium_active ? 1'b0 : mdplus_mdp_track_request),
+	.mdp_track_num     (paprium_active ? 8'd0 : mdplus_mdp_track_num),
+	.mdp_track_loop    (paprium_active ? 1'b0 : mdplus_mdp_track_loop),
+	.mdp_stop_request  (paprium_active ? 1'b0 : mdplus_mdp_stop_request),
+	.mdp_fade_sectors  (paprium_active ? 8'd0 : mdplus_mdp_fade_sectors),
+	.mdp_resume_request(paprium_active ? 1'b0 : mdplus_mdp_resume_request),
+	.mdp_volume        (paprium_active ? 8'hFF : mdplus_mdp_volume),
+	.mdp_volume_request(paprium_active ? 1'b0 : mdplus_mdp_volume_request),
 
 	.mdp_playing(mdp_hps_playing),
 	.mdp_current_track(mdp_hps_current_track),
@@ -814,16 +820,35 @@ md_plus md_plus
 	.mdp_last_cmd(mdp_last_cmd)
 );
 
-// CDDA audio output from mdp_audio
-wire signed [15:0] cdda_l, cdda_r;
+///////////////////////////////////////////////////
+// CDDA: Pocket PPAD stack (Paprium) + Pezz mdp_audio (other MD+)
+///////////////////////////////////////////////////
+
+localparam CDDA_CHUNK      = 4096;
+localparam CDDA_CHUNKS     = 4;
+localparam [31:0] PAPRIUM_PCM_BASE = 32'h0400_0000; // DDR byte addr; HPS one-shot fill
+
+wire signed [15:0] mdp_cdda_l, mdp_cdda_r;
+wire signed [15:0] pcm_cdda_l, pcm_cdda_r;
+wire signed [15:0] cdda_l = paprium_active ? pcm_cdda_l : mdp_cdda_l;
+wire signed [15:0] cdda_r = paprium_active ? pcm_cdda_r : mdp_cdda_r;
+wire        [15:0] cdda_underruns;
+wire               pcm_blob_ok;
+
+// --- Pezz HPS-fed PCM ring (non-Paprium MD+) ---
+wire  [7:0] mdp_DDRAM_BURSTCNT;
+wire [28:0] mdp_DDRAM_ADDR;
+wire        mdp_DDRAM_RD;
+wire [63:0] mdp_DDRAM_DIN;
+wire  [7:0] mdp_DDRAM_BE;
+wire        mdp_DDRAM_WE;
 
 mdp_audio mdp_audio
 (
 	.clk(clk_sys),
-	.reset(sys_reset),
+	.reset(sys_reset | paprium_active),
 
-	// DDRAM interface
-	.DDRAM_CLK(DDRAM_CLK),
+	.DDRAM_CLK(),
 	.DDRAM_BUSY(DDRAM_BUSY),
 	.DDRAM_BURSTCNT(mdp_DDRAM_BURSTCNT),
 	.DDRAM_ADDR(mdp_DDRAM_ADDR),
@@ -834,42 +859,171 @@ mdp_audio mdp_audio
 	.DDRAM_BE(mdp_DDRAM_BE),
 	.DDRAM_WE(mdp_DDRAM_WE),
 
-	// Ring buffer pointers (from/to hps_ext)
-	.active(mdp_audio_active),
+	.active(mdp_audio_active & ~paprium_active),
 	.buf_wr_ptr(mdp_audio_wr_ptr),
 	.buf_rd_ptr(mdp_audio_rd_ptr),
 
-	// MD+ commands (directly from md_plus)
-	.track_start(mdp_track_request),
-	.stop_request(mdp_stop_request),
-	.fade_sectors(mdp_fade_sectors),
-	.volume(mdp_volume),
-	.resume_request(mdp_resume_request),
+	.track_start(mdplus_mdp_track_request),
+	.stop_request(mdplus_mdp_stop_request),
+	.fade_sectors(mdplus_mdp_fade_sectors),
+	.volume(mdplus_mdp_volume),
+	.resume_request(mdplus_mdp_resume_request),
 	.osd_pause(OSD_STATUS & status[61]),
-	.rate_48k(paprium_active),   // Paprium WAVs are 48kHz; play them at 48k not 44.1k
+	.rate_48k(1'b0),
 
-	// Audio output
-	.audio_l(cdda_l),
-	.audio_r(cdda_r)
+	.audio_l(mdp_cdda_l),
+	.audio_r(mdp_cdda_r)
+);
+
+// --- ioctl FS3 → DDR (≤128 MiB); full 543 MB needs HPS mmap @ PAPRIUM_PCM_BASE ---
+wire  [7:0] load_DDRAM_BURSTCNT;
+wire [28:0] load_DDRAM_ADDR;
+wire        load_DDRAM_RD;
+wire [63:0] load_DDRAM_DIN;
+wire  [7:0] load_DDRAM_BE;
+wire        load_DDRAM_WE;
+wire        pcm_loading;
+
+paprium_pcm_load #(.BLOB_BASE_BYTE(PAPRIUM_PCM_BASE)) paprium_pcm_load
+(
+	.clk(clk_sys),
+	.reset(sys_reset),
+	.download(pcm_download),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_data(ioctl_data),
+	.ioctl_wait(pcm_ioctl_wait),
+	.DDRAM_CLK(),
+	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BURSTCNT(load_DDRAM_BURSTCNT),
+	.DDRAM_ADDR(load_DDRAM_ADDR),
+	.DDRAM_DOUT(DDRAM_DOUT),
+	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
+	.DDRAM_RD(load_DDRAM_RD),
+	.DDRAM_DIN(load_DDRAM_DIN),
+	.DDRAM_BE(load_DDRAM_BE),
+	.DDRAM_WE(load_DDRAM_WE),
+	.loading(pcm_loading),
+	.bytes_written()
+);
+
+// --- Pocket CDDA stack (fetch / buf / ima / play) ---
+wire  [7:0] fetch_DDRAM_BURSTCNT;
+wire [28:0] fetch_DDRAM_ADDR;
+wire        fetch_DDRAM_RD;
+wire [63:0] fetch_DDRAM_DIN;
+wire  [7:0] fetch_DDRAM_BE;
+wire        fetch_DDRAM_WE;
+
+wire        cdda_buf_wr_en;
+wire [12:0] cdda_buf_wr_addr;
+wire [15:0] cdda_buf_wr_data;
+wire  [2:0] cdda_wr_chunk_gray, cdda_rd_chunk_gray;
+wire [12:0] cdda_rd_ptr;
+wire [31:0] cdda_rd_data;
+wire [12:0] cdda_fill;
+wire        cdda_consumed;
+
+paprium_cdda_fetch #(
+	.BLOB_BASE_BYTE(PAPRIUM_PCM_BASE),
+	.CHUNK_BYTES(CDDA_CHUNK),
+	.NUM_CHUNKS (CDDA_CHUNKS),
+	.DIAG_MODE  (1'b0)
+) paprium_cdda_fetch (
+	.clk(clk_sys),
+	.reset(sys_reset | ~paprium_active | pcm_download),
+
+	.track_request(ppm_mdp_track_request),
+	.track_num    (ppm_mdp_track_num),
+	.track_loop   (ppm_mdp_track_loop),
+	.stop_request (ppm_mdp_stop_request),
+
+	.DDRAM_CLK(),
+	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BURSTCNT(fetch_DDRAM_BURSTCNT),
+	.DDRAM_ADDR(fetch_DDRAM_ADDR),
+	.DDRAM_DOUT(DDRAM_DOUT),
+	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
+	.DDRAM_RD(fetch_DDRAM_RD),
+	.DDRAM_DIN(fetch_DDRAM_DIN),
+	.DDRAM_BE(fetch_DDRAM_BE),
+	.DDRAM_WE(fetch_DDRAM_WE),
+
+	.buf_wr_en  (cdda_buf_wr_en),
+	.buf_wr_addr(cdda_buf_wr_addr),
+	.buf_wr_data(cdda_buf_wr_data),
+
+	.rd_chunk_gray(cdda_rd_chunk_gray),
+	.wr_chunk_gray(cdda_wr_chunk_gray),
+
+	.playing      (mdp_pcm_playing),
+	.current_track(mdp_pcm_current_track),
+	.blob_ok      (pcm_blob_ok)
+);
+
+paprium_cdda_buf #(
+	.CHUNK_BYTES(CDDA_CHUNK),
+	.NUM_CHUNKS (CDDA_CHUNKS)
+) paprium_cdda_buf (
+	.clk(clk_sys),
+	.reset(sys_reset | ~paprium_active),
+
+	.wr_en  (cdda_buf_wr_en),
+	.wr_addr(cdda_buf_wr_addr),
+	.wr_data(cdda_buf_wr_data),
+
+	.wr_chunk_gray(cdda_wr_chunk_gray),
+	.rd_chunk_gray(cdda_rd_chunk_gray),
+
+	.rd_ptr         (cdda_rd_ptr),
+	.rd_data        (cdda_rd_data),
+	.sample_consumed(cdda_consumed),
+	.fill_level     (cdda_fill),
+
+	.flush(ppm_mdp_track_request)
+);
+
+paprium_cdda_play #(
+	.RING_SAMPLES(CDDA_CHUNK * CDDA_CHUNKS / 4)
+) paprium_cdda_play (
+	.clk(clk_sys),
+	.reset(sys_reset | ~paprium_active),
+
+	.active        (ppm_mdp_active),
+	.track_start   (ppm_mdp_track_request),
+	.stop_request  (ppm_mdp_stop_request),
+	.fade_sectors  (ppm_mdp_fade_sectors),
+	.volume        (ppm_mdp_volume),
+	.resume_request(ppm_mdp_resume_request),
+	.osd_pause     (OSD_STATUS & status[61]),
+
+	.rd_ptr         (cdda_rd_ptr),
+	.rd_data        (cdda_rd_data),
+	.fill_level     (cdda_fill),
+	.sample_consumed(cdda_consumed),
+
+	.underruns(cdda_underruns),
+	.audio_l  (pcm_cdda_l),
+	.audio_r  (pcm_cdda_r)
 );
 
 ///////////////////////////////////////////////////
-// Paprium CDDA owns the DDRAM channel (MD+ ring buffer)
+// DDRAM channel mux: pcm load > Paprium fetch > mdp_audio
 ///////////////////////////////////////////////////
 
-wire  [7:0] mdp_DDRAM_BURSTCNT;
-wire [28:0] mdp_DDRAM_ADDR;
-wire        mdp_DDRAM_RD;
-wire [63:0] mdp_DDRAM_DIN;
-wire  [7:0] mdp_DDRAM_BE;
-wire        mdp_DDRAM_WE;
-
-assign DDRAM_BURSTCNT = mdp_DDRAM_BURSTCNT;
-assign DDRAM_ADDR     = mdp_DDRAM_ADDR;
-assign DDRAM_RD       = mdp_DDRAM_RD;
-assign DDRAM_DIN      = mdp_DDRAM_DIN;
-assign DDRAM_BE       = mdp_DDRAM_BE;
-assign DDRAM_WE       = mdp_DDRAM_WE;
+assign DDRAM_CLK = clk_sys;
+assign DDRAM_BURSTCNT = pcm_download ? load_DDRAM_BURSTCNT :
+                        paprium_active ? fetch_DDRAM_BURSTCNT : mdp_DDRAM_BURSTCNT;
+assign DDRAM_ADDR     = pcm_download ? load_DDRAM_ADDR :
+                        paprium_active ? fetch_DDRAM_ADDR     : mdp_DDRAM_ADDR;
+assign DDRAM_RD       = pcm_download ? load_DDRAM_RD :
+                        paprium_active ? fetch_DDRAM_RD       : mdp_DDRAM_RD;
+assign DDRAM_DIN      = pcm_download ? load_DDRAM_DIN :
+                        paprium_active ? fetch_DDRAM_DIN      : mdp_DDRAM_DIN;
+assign DDRAM_BE       = pcm_download ? load_DDRAM_BE :
+                        paprium_active ? fetch_DDRAM_BE       : mdp_DDRAM_BE;
+assign DDRAM_WE       = pcm_download ? load_DDRAM_WE :
+                        paprium_active ? fetch_DDRAM_WE       : mdp_DDRAM_WE;
 
 
 ///////////////////////////////////////////////////
