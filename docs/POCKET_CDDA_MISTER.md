@@ -1,6 +1,6 @@
 # Pocket CDDA → MiSTer — port plan (docs only)
 
-**Status:** plan locked for first implementation PR  
+**Status:** M1 done on `main` — Pocket `0.2.1` CDDA/IMA sources present in `rtl/PAPRIUM/` + `files.qip`; **UNWIRED** (not instantiated; Pezz MD+/HPS music path unchanged). Plan below still governs M2+.  
 **Date:** 2026-09-08 (America/New_York)  
 **Goal correction (B Jam):** music and behavior must match **paprium-pocket `0.2.1`**, including **`paprium.pcm` (PPAD IMA ADPCM)** — **not** Pezz MD+ WAV+`.cue`.  
 **Shell:** Pezz MiSTer only (`sys/`, Quartus, DE10).  
@@ -10,7 +10,7 @@
 |---|---|---|
 | Pocket shipping | `thekoalakoa/paprium-pocket` @ tag `0.2.1` | `de08e5f999fb` |
 | Pezz shell | `MisterPezz82/Paprium_MegaDrive_MiSTer` @ `paprium-mdplus-port` | `2c256d5910e2` (V.06) |
-| This repo | `thekoalakoa/Paprium_MiSTer` @ `main` | Pezz shell + Pocket overlays; **CDDA modules absent** |
+| This repo | `thekoalakoa/Paprium_MiSTer` @ `main` | Pezz shell + Pocket overlays; **CDDA/IMA sources present, unwired** |
 
 > **Supersedes** the CDDA half of `docs/MISTER_PORT.md` where that doc said “keep Pezz HPS/MD+ WAV+cue” and “do not import Pocket CDDA RTL.” Shell choice (Option A — Pezz) still stands. Music path choice does **not**.
 
@@ -82,7 +82,7 @@ Blob SHAs already match Pocket `0.2.1` on `main` for `audio_sfx.sv`, `paprium_ca
 | Consumer | `paprium_cdda_play.sv` (48 kHz, fade, mute, volume) | `mdp_audio.sv` (same musical constants, different memory side) |
 | Loop semantics | Honors MCU `$11xx` / `$12xx` in **FPGA** | HPS ignores FPGA loop flag; loops from **cue** `REM LOOP` / `REM NOLOOP` |
 
-`rtl/PAPRIUM/` on GitHub `main` has **no** `paprium_cdda_*.sv` / `paprium_ima_decode.sv`. That is the gap.
+`rtl/PAPRIUM/` on `main` now has Pocket `0.2.1` `paprium_cdda_*.sv` / `paprium_ima_decode.sv` (**unwired**). Remaining gap: MiSTer DDR fetch + wire-up (M2+); Pezz MD+ still owns live music.
 
 ---
 
@@ -296,6 +296,10 @@ patches/README.md
 scripts/build_mcu.sh
 ```
 
+### 6.2b Also added (Quartus Lite 21.1)
+
+`sys/pll_q21.qip` — copy of `pll_q17.qip` so `sys.qip`’s versioned `pll_q*.qip` include resolves under Quartus **21.1** Lite.
+
 ### 6.3 Edit (MiSTer shell)
 
 | File | Change |
@@ -338,7 +342,7 @@ paprium_cmd_log.sv        # optional diag only
 | # | Milestone | Size | Exit criteria |
 |---|---|---|---|
 | **M0** | **This doc on `main`** | Docs PR | `POCKET_CDDA_MISTER.md` pushed; README points at pcm-not-cue |
-| **M1** | Restore CDDA/IMA sources + `files.qip`; instantiate under `generate if (0)` or tie-offs | Small RTL | Quartus still builds; SFX/firmware **unchanged** |
+| **M1** | Restore CDDA/IMA sources + `files.qip`; **unwired** (no instantiate) | Small RTL | **DONE** — blobs match Pocket `0.2.1`; qip lists four files; Pezz MD+ untouched |
 | **M2** | DDRAM fetch rewrite + `MegaDrive.sv` wire-up; disconnect Paprium from `hps_ext` music | Medium RTL | Sim or bench: magic OK, track table read, underrun counter live |
 | **M3** | ioctl / HPS one-shot load of `paprium.pcm` into DDR | Small HPS or ioctl-only | File on SD → DDR; missing file → silent |
 | **M4** | Hardware soak | — | BGM + Pocket SFX; one-shots; elevator/anim unchanged vs overlay baseline |
@@ -368,7 +372,8 @@ paprium_cmd_log.sv        # optional diag only
 - [x] Must-keep Pocket SFX + `mcu.txt`/patches + cart overlays called out  
 - [x] Music = **pcm**, not cue/wav  
 - [x] File restore list + APF replacement interface + first PR size stated  
-- [ ] RTL implementation — **out of scope for PR-0**
+- [x] M1: four CDDA/IMA SV + `files.qip` on `main`, **unwired** (no instantiate in `MegaDrive.sv` / `paprium_cart.sv`)
+- [ ] M2+ RTL (DDR fetch rewrite + wire-up) — **not started**
 
 ---
 
