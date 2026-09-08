@@ -1,5 +1,7 @@
 # Paprium on the MiSTer Mega Drive core
 
+> **Errata (this fork):** Paprium **background music** is Pocket **`paprium.pcm` (PPAD IMA)** on the FPGA CDDA stack — **not** Pezz MD+ cue/WAV. The cue/`REM NOLOOP` notes below are **historical for Pezz upstream only**. See [`POCKET_CDDA_MISTER.md`](POCKET_CDDA_MISTER.md) and the root README.
+
 > **This is a hacky way to *experience* Paprium (WaterMelon) on MiSTer — not a
 > faithful reproduction of the cartridge.** Paprium's custom **DATENMEISTER**
 > chipset is not reproduced. This port takes the same approach as the **EverDrive
@@ -24,12 +26,10 @@ sound effects. The SVP chip (Virtua Racing) is retained.
   was replaced with the correct Genesis Plus GX / FinalBurn Neo routine
   (`paprium_decoder_lzo`) — the MAME-derived one is broken and corrupts the
   subway and a few other areas (fix per krikzz; not yet in stock mega-ppm).
-- **Background music (CDDA).** The MCU's native MD+ commands are bridged to the
-  core's MD+ engine and CDDA mixer by `paprium_mdp_adapter.sv`, with an
-  EverDrive-FIFO stub so `mdp_init()` completes. No ROM audio conversion is
-  required. Paprium's WAV tracks are authored at **48 kHz**, so the CDDA player
-  consumes at 48 kHz for Paprium (44.1 kHz for other MD+ content) — otherwise
-  the music plays ~8% slow.
+- **Background music (CDDA).** MCU MD+ commands (`paprium_mdp_adapter.sv`) drive
+  the Pocket CDDA stack (`paprium_cdda_{fetch,buf,play}` + IMA decode) reading
+  **`paprium.pcm`** from DDR. Loop/one-shot stay in FPGA (`$11xx`/`$12xx`).
+  Consume rate is **48 kHz**. Pezz cue/WAV / `hps_ext` music is **not** used for Paprium.
 - **Sound effects.** Paprium's own self-contained cartridge PCM engine (eight
   channels, each with a FIFO and per-channel sample-rate / pitch / pan / volume)
   is ported as `audio_sfx.sv` and mixed with FM/PSG and CDDA at the top level.

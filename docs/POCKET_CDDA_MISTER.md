@@ -1,6 +1,6 @@
 # Pocket CDDA → MiSTer — port plan (docs only)
 
-**Status:** M1 done on `main` — Pocket `0.2.1` CDDA/IMA sources present in `rtl/PAPRIUM/` + `files.qip`; **UNWIRED** (not instantiated; Pezz MD+/HPS music path unchanged). Plan below still governs M2+.  
+**Status:** M2(+partial M3) on `main` — Pocket CDDA stack **wired** in `MegaDrive.sv`; `paprium_cdda_fetch` is a **DDRAM** master (no APF); Paprium BGM disconnected from `hps_ext`/cue. Full ~543 MB HPS one-shot fill still needed for soak (ioctl FS3 ≤ ~128 MiB).  
 **Date:** 2026-09-08 (America/New_York)  
 **Goal correction (B Jam):** music and behavior must match **paprium-pocket `0.2.1`**, including **`paprium.pcm` (PPAD IMA ADPCM)** — **not** Pezz MD+ WAV+`.cue`.  
 **Shell:** Pezz MiSTer only (`sys/`, Quartus, DE10).  
@@ -76,11 +76,11 @@ Blob SHAs already match Pocket `0.2.1` on `main` for `audio_sfx.sv`, `paprium_ca
 
 | Item | Pocket `0.2.1` | `Paprium_MiSTer` `main` today |
 |---|---|---|
-| Music asset | **`paprium.pcm`** (~543 MB PPAD IMA ADPCM) | Pezz **WAV + `paprium.cue`** via Main_MiSTer `mdplus.cpp` |
-| Producer | `paprium_cdda_fetch.sv` → APF dataslot **id 300** | `hps_ext.sv` → Linux → DDR ring PCM |
-| Ring + decode | `paprium_cdda_buf.sv` holds **IMA**; `paprium_ima_decode.sv` on read side | `mdp_audio.sv` drains **PCM** from DDR (no IMA) |
-| Consumer | `paprium_cdda_play.sv` (48 kHz, fade, mute, volume) | `mdp_audio.sv` (same musical constants, different memory side) |
-| Loop semantics | Honors MCU `$11xx` / `$12xx` in **FPGA** | HPS ignores FPGA loop flag; loops from **cue** `REM LOOP` / `REM NOLOOP` |
+| Music asset | **`paprium.pcm`** (~543 MB PPAD IMA ADPCM) | **`paprium.pcm`** in DDR @ `0x04000000` (HPS/ioctl); cue/WAV not used for Paprium |
+| Producer | `paprium_cdda_fetch.sv` → APF dataslot **id 300** | **`paprium_cdda_fetch.sv` → DDRAM read master** (Option D) |
+| Ring + decode | `paprium_cdda_buf.sv` holds **IMA**; `paprium_ima_decode.sv` on read side | Same Pocket buf/ima (wired) |
+| Consumer | `paprium_cdda_play.sv` (48 kHz, fade, mute, volume) | Same play module → `cdda_l/r` when `paprium_active` |
+| Loop semantics | Honors MCU `$11xx` / `$12xx` in **FPGA** | Same (FPGA); Pezz cue path gated off for Paprium |
 
 `rtl/PAPRIUM/` on `main` now has Pocket `0.2.1` `paprium_cdda_*.sv` / `paprium_ima_decode.sv` (**unwired**). Remaining gap: MiSTer DDR fetch + wire-up (M2+); Pezz MD+ still owns live music.
 
@@ -373,7 +373,9 @@ paprium_cmd_log.sv        # optional diag only
 - [x] Music = **pcm**, not cue/wav  
 - [x] File restore list + APF replacement interface + first PR size stated  
 - [x] M1: four CDDA/IMA SV + `files.qip` on `main`, **unwired** (no instantiate in `MegaDrive.sv` / `paprium_cart.sv`)
-- [ ] M2+ RTL (DDR fetch rewrite + wire-up) — **not started**
+- [x] M2 RTL (DDR fetch rewrite + MegaDrive wire-up; Paprium off hps_ext music)
+- [~] M3 load path (ioctl FS3 stub + documented DDR base `0x04000000`; full HPS mmap helper TBD)
+- [ ] M4 hardware soak
 
 ---
 

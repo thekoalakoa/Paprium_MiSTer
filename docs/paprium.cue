@@ -1,3 +1,6 @@
+REM HISTORICAL — Pezz MD+ cue/WAV path. This fork uses paprium.pcm (PPAD IMA), not this cue.
+REM See docs/POCKET_CDDA_MISTER.md and README.md.
+
 FILE "02 90's Acid Dub Character Select.wav" WAVE
   TRACK 01 AUDIO
     INDEX 01 00:00:00
