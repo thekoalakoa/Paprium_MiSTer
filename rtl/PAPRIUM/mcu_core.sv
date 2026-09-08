@@ -282,7 +282,7 @@ module mcu_irom(
 	
 	initial
 	begin
-		$readmemh("mcu.txt", rom);  // pocket: bare name + SEARCH_PATH ../rtl/PAPRIUM, same idiom as 68k.v
+		$readmemh("rtl/PAPRIUM/mcu.txt", rom);  // MiSTer/Pezz relative path (keep 32 KB IMEM)
 	end
 
 	
