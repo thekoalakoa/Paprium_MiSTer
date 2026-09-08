@@ -1,70 +1,29 @@
-Paprium for MiSTer Mega Drive
+# Paprium_MiSTer
 
-A MiSTer Mega Drive core fork bringing Everdrive Pro Style Paprium support to Mister FPGA, with working MCU/cart behaviour, streamed graphics, CDDA/MD+ music, 
+Standalone **MiSTer** core for **Paprium** (WaterMelon).
 
-This project builds on years of community reverse-engineering, preservation, emulator work, and flash-cart development.
+**Seeded from** [MisterPezz82/Paprium_MegaDrive_MiSTer](https://github.com/MisterPezz82/Paprium_MegaDrive_MiSTer) branch `paprium-mdplus-port` (`2c256d5910e2`, V.06), with **Pocket shipping `0.2.1` overlays** (firmware + Paprium RTL deltas) on top. MiSTer framework (`sys/`, HDMI, SDRAM, OSD, controls) comes from Pezz; shipping fixes come from Pocket. This is **not** a Pocket openFPGA tree, and it is **not** based on FX68K soak experiments.
 
-Based on prior work by:
-Krikzz / mega-ppm (including the first-level door fix, shared ahead of release)
-adroxe / Paprium-Arcade - the Arcade Mode unlock IPS (https://github.com/adroxe/Paprium-Arcade)
-Project Little Man
-TheHpman / MAME Paprium research
-MAVProxyUser / Genesis Plus GX Paprium PR
-Paprium preservation community
+> **Pins:** Pezz `2c256d5910e29e28fc21df5f65b68d70069880c3` · Pocket tag [`0.2.1`](https://github.com/thekoalakoa/paprium-pocket/releases/tag/0.2.1) (`de08e5f999fba2f820026e5c9d49088b9850aa52`).
 
-Special thanks:
-MiSTer Mega Drive core developers
-Genesis Plus GX / MAME contributors
-Everyone who helped test, document, and preserve Paprium
+## Status
 
+Option A graft landed (Pezz shell + Pocket overlays). Port map: [docs/MISTER_PORT.md](docs/MISTER_PORT.md). Day-one notes: [docs/FORK_BRIEF.md](docs/FORK_BRIEF.md). Pezz upstream README preserved as [docs/PEZZ_UPSTREAM_README.md](docs/PEZZ_UPSTREAM_README.md).
 
-ROM and WAV assets are not included.
-Bring your own Paprium dump and audio files.
+No bitstream in this repo yet — next step is a Quartus skeleton build / cart overlay review.
 
-If only there were some kind of archive on the internet...
+## What you must supply
 
-## Required Files
+Same as Pocket: **your own cartridge dump** and, optionally, **your own soundtrack** for CDDA (via MiSTer HPS/MD+, not Pocket APF). Neither is included or linked here.
 
-Create this folder on your MiSTer SD card:
+## Lineage (GPLv3)
 
-`/media/fat/games/MegaDrive/Paprium/`
+- [Nuked-MD-FPGA](https://github.com/nukeykt/Nuked-MD-FPGA)
+- [MegaDrive_MiSTer](https://github.com/MiSTer-devel/MegaDrive_MiSTer)
+- [Paprium_MegaDrive_MiSTer](https://github.com/MisterPezz82/Paprium_MegaDrive_MiSTer) (Pezz — MiSTer shell)
+- [paprium-pocket](https://github.com/thekoalakoa/paprium-pocket) (Pocket `0.2.1` overlays)
+- [mega-ppm](https://github.com/krikzz/mega-ppm)
 
-Place the ROM and WAV files there:
+## Licence
 
-```text
-├── Paprium.md
-├── paprium.cue
-├── 01 Theme of Paprium.wav
-├── 02 90's Acid Dub Character Select.wav
-├── 03 Bone Crusher.wav
-├── 04 Drumbass Boss.wav
-├── 05 Asian Chill.wav
-├── ...
-└── 52 Waterfront Beat.wav
-```
-Load Paprium.md from the Mega Drive Paprium core.
-
-**You need to boot the game once and select "Save back up ram" in the OSD the first time you play - Then hit reset in the OSD to get the REAL version of paprium to boot** 
-
-## A note on AI use ("vibe coding")
-
-Let's get this out of the way: it's a **Paprium** project *and* it's **AI
-vibe-coded** — two of the internet's favourite things to argue about, bundled
-into one repo. I'm fully expecting some hate for it, and honestly, that's fair.
-
-I'm not an FPGA engineer. Most of the Verilog in here was generated and debugged
-by AI (Claude and Codex) through a lot of back-and-forth — I'm not going to
-pretend I hand-wrote it, because I didn't.
-
-What I actually did was the boring half: running every build on a real MiSTer,
-photographing the garbled graphics, listening to the broken audio, feeding it
-all back, correcting the AI when it was confidently wrong, and deciding what was
-good enough to call done. The Paprium / EverDrive Pro / firmware / MD+ knowledge
-came from me and the wider preservation community — the AI couldn't see the
-screen or hear the speakers, so that bit was on me.
-
-It's a hack, not a "proper" core, and I've no doubt someone could do it far
-better. If it annoys anyone enough to go and build the real thing from scratch,
-without AI — genuinely, brilliant, please do, everyone wins. Until then, I made
-this so a few people could mess about with Paprium on MiSTer. If that's you,
-enjoy.
+GPLv3 — see upstream projects.

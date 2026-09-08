@@ -1,4 +1,5 @@
 module paprium_cart
+#(parameter SFX = 1'b1, parameter CMDLOG = 1'b0)
 (
 	input             clk,
 	input             reset,
@@ -40,6 +41,10 @@ module paprium_cart
 	output            dbg_ramdp_write,
 	output     [10:0] dbg_ramdp_addr,
 	output     [31:0] dbg_ramdp_data,
+
+	// paprium: mailbox command log read-back (diagnostic builds only)
+	input      [13:0] cmdlog_read_addr,
+	output      [7:0] cmdlog_read_data,
 
 	// Paprium battery-backup save RAM (HPS cartridge save interface)
 	input      [14:0] save_addr,
@@ -194,8 +199,39 @@ module paprium_cart
 		.debug_ramdp_addr(dbg_ramdp_addr),
 		.debug_ramdp_data(dbg_ramdp_data),
 		.debug_cpu_we_act(),
-		.debug_cpu_write()
+		.debug_cpu_write(cpu_wr_pulse)
 	);
+
+	// paprium: snoop the 68k's writes to the command mailbox. CMDLOG is a
+	// localparam at the top level, so this whole block folds away in shipping.
+	wire cpu_wr_pulse;
+
+	// Channel-7 taps from audio_sfx, declared here because the logger below is
+	// elaborated before the sfx instance that drives them.
+	wire [10:0] ch7_vol;
+	wire        ch7_empty;
+	wire        ch7_wr;
+
+	generate
+		if(CMDLOG) begin : cmdlog_on
+			paprium_cmd_log cmdlog_inst
+			(
+				.clk(clk),
+				.reset(reset),
+				.cpu_wr(cpu_wr_pulse),
+				.cpu_addr(cpu.addr[12:0]),
+				.cpu_data(cpu.dato),
+				.ch7_vol(ch7_vol),
+				.ch7_empty(ch7_empty),
+				.ch7_wr(ch7_wr),
+				.read_addr(cmdlog_read_addr),
+				.read_data(cmdlog_read_data)
+			);
+		end
+		else begin : cmdlog_off
+			assign cmdlog_read_data = 8'd0;
+		end
+	endgenerate
 
 	assign cart_data = cpu_dati_ramdp;
 
@@ -229,6 +265,12 @@ module paprium_cart
 		.save_wr(save_wr)
 	);
 
+// paprium: SFX is switchable so a diagnostic bitstream can trade it for the ~700 ALMs
+// needed to fit while a graphics-path fix is being validated on hardware. The cartridge
+// PCM engine has nothing to do with the stream window, so dropping it changes nothing
+// about what such a build proves. SFX=1 is the shipping configuration.
+generate
+if(SFX) begin : sfx_on
 	SndCk snd;
 	wire signed [15:0] sfx_l_raw;
 	wire signed [15:0] sfx_r_raw;
@@ -252,7 +294,10 @@ module paprium_cart
 		.snd(snd),
 		.mcu_dati_sfx(mcu_dati_sfx),
 		.snd_l(sfx_l_raw),
-		.snd_r(sfx_r_raw)
+		.snd_r(sfx_r_raw),
+		.dbg_ch7_vol(ch7_vol),
+		.dbg_ch7_empty(ch7_empty),
+		.dbg_ch7_wr(ch7_wr)
 	);
 
 	always @(posedge clk) begin
@@ -270,6 +315,14 @@ module paprium_cart
 
 	assign sfx_l = (enable & sfx_started & (sfx_volume != 0)) ? sfx_l_raw : 16'sd0;
 	assign sfx_r = (enable & sfx_started & (sfx_volume != 0)) ? sfx_r_raw : 16'sd0;
+end
+else begin : sfx_off
+	assign mcu_dati_sfx = 32'd0;
+	assign sfx_l        = 16'sd0;
+	assign sfx_r        = 16'sd0;
+end
+endgenerate
+// paprium-end
 
 	paprium_mdp_adapter mdp_adapter_inst
 	(
