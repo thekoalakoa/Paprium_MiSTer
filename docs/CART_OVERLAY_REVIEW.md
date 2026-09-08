@@ -6,6 +6,7 @@
 **Pezz parent:** `2c256d5910e2` (Paprium V.06 / `paprium-mdplus-port`)  
 **Pocket pin:** `thekoalakoa/paprium-pocket` @ tag `0.2.1` (`de08e5f999fb`)  
 **Method:** `git diff` / `git show` against seeded remotes; no Quartus run.
+**Status:** **FIXED 2026-09-08** — both blockers (Pezz `paprium_backup.sv` + `$readmemh` path) applied on `main`; GO for first Quartus.
 
 ---
 
@@ -13,18 +14,18 @@
 
 | | |
 |---|---|
-| **Verdict** | **NO-GO for first Quartus as-is** |
-| **Risk** | **Medium** — two concrete compile/load breaks; everything else looks graft-clean |
+| **Verdict** | **GO for first Quartus** (blockers addressed) |
+| **Risk** | **Low–Medium** — prior compile/load breaks fixed; bring-up still needs Pezz SD / cue+WAV |
 | **Shell hooks** | Pezz `MegaDrive.sv` / `rtl/cartridge.sv` / `rtl/sdram.sv` / `rtl/mdp_audio.sv` / `rtl/pad_io.sv` / MD+ path **unchanged** by the overlay (good) |
 | **CDDA** | Pezz HPS / MD+ preserved; Pocket APF CDDA **not** imported (good) |
 | **MD+ bridge** | `paprium_mdp_adapter.sv` **SAME** blob tip = Pezz = Pocket (`sha256` prefix `748f9437318e7fc8…`) |
 
-**Must fix before first fit (2 items):**
+**FIXED (2026-09-08):** both blocking items below are applied on `main` (see follow-up commit). Optional: tie off unused `cmdlog_*` ports if Quartus warns.
 
-1. Restore Pezz **`rtl/PAPRIUM/paprium_backup.sv`** (16-bit HPS `.sav` port). Overlay dropped in Pocket’s **8-bit APF** save port → width mismatch vs `paprium_cart` / `cartridge.sv` / `MegaDrive.sv`.
-2. Fix **`$readmemh` path** in `mcu_core.sv` back to `"rtl/PAPRIUM/mcu.txt"` (or add a Quartus `SEARCH_PATH` for `rtl/PAPRIUM`). Pezz `.qsf` has **no** `SEARCH_PATH`; bare `"mcu.txt"` will miss the hex at synth.
+~~Must fix before first fit (2 items):~~ **Addressed:**
 
-After those two, **safe to try Quartus**. Optional: tie off unused `cmdlog_*` ports if Quartus warns.
+1. ~~Restore Pezz `paprium_backup.sv`~~ — **FIXED:** restored Pezz 16-bit HPS `.sav` port from `2c256d5910e2` (Pocket 8-bit APF port discarded).
+2. ~~Fix `$readmemh` path~~ — **FIXED:** `mcu_core.sv` uses `"rtl/PAPRIUM/mcu.txt"` again; **32 KB IMEM kept** (`rom[32768/4]`, `addr[14:0]`).
 
 ---
 
@@ -103,7 +104,7 @@ After those two, **safe to try Quartus**. Optional: tie off unused `cmdlog_*` po
 
 **Conclusion:** Pezz’s **16 KB** ceiling cannot hold Pocket firmware (~20 KB). Overlay’s **32 KB** IMEM is **required**, not optional. Address truncation from full `mcu.addr` into `[14:0]` is intentional (same pattern as Pezz `[13:0]`).
 
-**Must fix:** restore path `"rtl/PAPRIUM/mcu.txt"` **or** add to `MegaDrive.qsf`:
+**Must fix:** ~~restore path `"rtl/PAPRIUM/mcu.txt"`~~ — **FIXED 2026-09-08** (path restored; 32 KB IMEM kept). Alternate was add to `MegaDrive.qsf`:
 
 ```tcl
 set_global_assignment -name SEARCH_PATH rtl/PAPRIUM
@@ -127,7 +128,7 @@ Prefer restoring the Pezz-style path (no `.qsf` churn).
 
 MCU-side FSM / 4 KB dual-port intent is otherwise the same; only the host port was Pocket-ized. Overlay file is **byte-identical** to Pocket `0.2.1` backup — wrong host contract for MiSTer.
 
-**Must fix:** `git checkout 2c256d5910e2 -- rtl/PAPRIUM/paprium_backup.sv` (or equivalent restore). Do **not** keep Pocket endian/`SAVE_BIG_ENDIAN` glue on MiSTer.
+**Must fix:** ~~`git checkout 2c256d5910e2 -- rtl/PAPRIUM/paprium_backup.sv`~~ — **FIXED 2026-09-08** (Pezz blob restored on `main`). Do **not** keep Pocket endian/`SAVE_BIG_ENDIAN` glue on MiSTer.
 
 ---
 
@@ -163,11 +164,13 @@ Overlay did not edit these; they remain V.06 behavior the cart still expects:
 
 ## Required follow-up code changes before first fit
 
-1. **Restore Pezz backup (blocking):**
+> **FIXED 2026-09-08 on `main`:** items (1) and (2) applied — Pezz `paprium_backup.sv` restored; `$readmemh("rtl/PAPRIUM/mcu.txt")` with 32 KB IMEM kept.
+
+1. ~~**Restore Pezz backup (blocking):**~~ **DONE**
    ```bash
    git checkout 2c256d5910e2 -- rtl/PAPRIUM/paprium_backup.sv
    ```
-2. **Fix IMEM hex path (blocking)** in `rtl/PAPRIUM/mcu_core.sv`:
+2. ~~**Fix IMEM hex path (blocking)**~~ **DONE** in `rtl/PAPRIUM/mcu_core.sv`:
    ```systemverilog
    $readmemh("rtl/PAPRIUM/mcu.txt", rom);
    ```
@@ -181,8 +184,8 @@ Overlay did not edit these; they remain V.06 behavior the cart still expects:
 
 | Question | Answer |
 |---|---|
-| **Safe to try Quartus as-is?** | **No** |
-| **Must fix X first** | **(1) Pezz `paprium_backup.sv` 16-bit HPS port** and **(2) `$readmemh("rtl/PAPRIUM/mcu.txt")`** |
+| **Safe to try Quartus as-is?** | **Yes** (blockers fixed 2026-09-08) |
+| **Must fix X first** | ~~**(1) Pezz `paprium_backup.sv` 16-bit HPS port** and **(2) `$readmemh("rtl/PAPRIUM/mcu.txt")`**~~ — **DONE** |
 | After (1)+(2)? | **Yes — safe to try first Quartus fit** (expect M10K bump for echo+IMEM; DE10 budget OK). Functional bring-up still needs Pezz SD layout / cue+WAV as in `MISTER_PORT.md`. |
 
 ---
