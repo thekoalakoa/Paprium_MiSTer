@@ -19,7 +19,15 @@ module audio_sfx
 
 	output [31:0]mcu_dati_sfx,
 	output signed [15:0]snd_l,
-	output signed [15:0]snd_r
+	output signed [15:0]snd_r,
+
+	// paprium: channel-7 state for the diagnostic logger. Channel 7 is where the
+	// punk-TV cue lands (the game asks for it on mask 0x0080), and the mailbox
+	// capture has already shown the REQUEST is correct - volume ramps to 0xC0 and
+	// the pan sweeps - so the remaining question is what the channel does with it.
+	output [10:0]dbg_ch7_vol,
+	output       dbg_ch7_empty,
+	output       dbg_ch7_wr
 );
 
 	SfxBank bank0;
@@ -36,13 +44,23 @@ module audio_sfx
 	);
 
 	//****************************** sfx bank (8 channels)
+	wire [7:0]chan_wr;
+
 	sfx_bank sfx_bank0
 	(
 		.mcu(mcu),
 		.aclk(aclk),
 		.bank_idx(3'd0),
-		.bank(bank0)
+		.bank(bank0),
+		.chan_wr(chan_wr)
 	);
+
+	// paprium: channel 7 taps. dbg_ch7_wr pulses on every PCM word the MCU pushes,
+	// so a stalled count means the firmware stopped feeding the channel - which is
+	// what a sound that starts and then dies looks like from here.
+	assign dbg_ch7_vol   = bank0.sfx[7].vol;
+	assign dbg_ch7_empty = bank0.sfx[7].status[0];
+	assign dbg_ch7_wr    = chan_wr[7];
 
 	//****************************** mixer
 	mix_bank mix_bank0
@@ -57,6 +75,20 @@ module audio_sfx
 endmodule
 
 //****************************************************************** audio clocks
+// paprium: rewritten for area. Upstream gives each channel rate its own dac_clocker,
+// and every one of those carries a 32-bit fractional divider (clk_dvp comparing a
+// 32-bit accumulator against ck_base = 53,693,175) plus a 9-bit phase counter - about
+// 65 ALUTs each, ~334 for the bank. On the Pocket that is unaffordable: the device
+// fits at 99% ALM and this is Paprium's own logic, not the console's.
+//
+// Every rate the bank produces is a sub-multiple of the 48 kHz tick the engine already
+// has, so they come free from counters that never exceed 9:
+//
+//   24000 = 48000/2   12000 = 48000/4   9600 = 48000/5   6000 = 48000/8
+//   5333 -> 48000/9 = 5333.33 Hz, 0.006% fast and inaudible
+//
+// The divided rates are now phase-locked to the 48 kHz tick rather than free-running.
+// For per-channel PCM pacing that is harmless, and deterministic rather than not.
 module aclk_bank
 (
 	input  McuBus mcu,
@@ -68,14 +100,29 @@ module aclk_bank
 	assign aclk[6] = aclk[0];
 	assign aclk[7] = aclk[0];
 
-	// dac_clocker (audio_clock.sv): generates next_sample at `rate` Hz.
-	dac_clocker aclk1(.clk(mcu.clk), .rst(1'b0), .rate(16'd24000), .ck_base(`CLK_FREQ), .dac_clk(), .next_sample(aclk[1]), .phase());
-	dac_clocker aclk2(.clk(mcu.clk), .rst(1'b0), .rate(16'd12000), .ck_base(`CLK_FREQ), .dac_clk(), .next_sample(aclk[2]), .phase());
-	dac_clocker aclk3(.clk(mcu.clk), .rst(1'b0), .rate(16'd9600),  .ck_base(`CLK_FREQ), .dac_clk(), .next_sample(aclk[3]), .phase());
-	dac_clocker aclk4(.clk(mcu.clk), .rst(1'b0), .rate(16'd6000),  .ck_base(`CLK_FREQ), .dac_clk(), .next_sample(aclk[4]), .phase());
-	dac_clocker aclk5(.clk(mcu.clk), .rst(1'b0), .rate(16'd5333),  .ck_base(`CLK_FREQ), .dac_clk(), .next_sample(aclk[5]), .phase());
+	reg [1:0] div2  = 0;   // /2  -> 24000
+	reg [2:0] div4  = 0;   // /4  -> 12000
+	reg [2:0] div5  = 0;   // /5  ->  9600
+	reg [3:0] div8  = 0;   // /8  ->  6000
+	reg [3:0] div9  = 0;   // /9  ->  5333.33
+
+	always @(posedge mcu.clk) if(dac_next_sample) begin
+		div2 <= (div2 == 2'd1) ? 2'd0 : div2 + 1'd1;
+		div4 <= (div4 == 3'd3) ? 3'd0 : div4 + 1'd1;
+		div5 <= (div5 == 3'd4) ? 3'd0 : div5 + 1'd1;
+		div8 <= (div8 == 4'd7) ? 4'd0 : div8 + 1'd1;
+		div9 <= (div9 == 4'd8) ? 4'd0 : div9 + 1'd1;
+	end
+
+	// One 48 kHz tick wide, exactly like dac_clocker's next_sample
+	assign aclk[1] = dac_next_sample & (div2 == 2'd0);
+	assign aclk[2] = dac_next_sample & (div4 == 3'd0);
+	assign aclk[3] = dac_next_sample & (div5 == 3'd0);
+	assign aclk[4] = dac_next_sample & (div8 == 4'd0);
+	assign aclk[5] = dac_next_sample & (div9 == 4'd0);
 
 endmodule
+// paprium-end
 
 //****************************************************************** sfx channels
 module sfx_bank
@@ -83,17 +130,18 @@ module sfx_bank
 	input  McuBus mcu,
 	input  [7:0]aclk,
 	input  [2:0]bank_idx,
-	output SfxBank bank
+	output SfxBank bank,
+	output [7:0]chan_wr      // paprium: per-channel FIFO write pulses
 );
 
-	sfx_chan sfx_chan0(.mcu(mcu), .aclk(aclk), .chan_idx(6'd0 + {bank_idx,3'b000}), .sfx(bank.sfx[0]));
-	sfx_chan sfx_chan1(.mcu(mcu), .aclk(aclk), .chan_idx(6'd1 + {bank_idx,3'b000}), .sfx(bank.sfx[1]));
-	sfx_chan sfx_chan2(.mcu(mcu), .aclk(aclk), .chan_idx(6'd2 + {bank_idx,3'b000}), .sfx(bank.sfx[2]));
-	sfx_chan sfx_chan3(.mcu(mcu), .aclk(aclk), .chan_idx(6'd3 + {bank_idx,3'b000}), .sfx(bank.sfx[3]));
-	sfx_chan sfx_chan4(.mcu(mcu), .aclk(aclk), .chan_idx(6'd4 + {bank_idx,3'b000}), .sfx(bank.sfx[4]));
-	sfx_chan sfx_chan5(.mcu(mcu), .aclk(aclk), .chan_idx(6'd5 + {bank_idx,3'b000}), .sfx(bank.sfx[5]));
-	sfx_chan sfx_chan6(.mcu(mcu), .aclk(aclk), .chan_idx(6'd6 + {bank_idx,3'b000}), .sfx(bank.sfx[6]));
-	sfx_chan sfx_chan7(.mcu(mcu), .aclk(aclk), .chan_idx(6'd7 + {bank_idx,3'b000}), .sfx(bank.sfx[7]));
+	sfx_chan sfx_chan0(.mcu(mcu), .aclk(aclk), .chan_idx(6'd0 + {bank_idx,3'b000}), .sfx(bank.sfx[0]), .wr_pulse(chan_wr[0]));
+	sfx_chan sfx_chan1(.mcu(mcu), .aclk(aclk), .chan_idx(6'd1 + {bank_idx,3'b000}), .sfx(bank.sfx[1]), .wr_pulse(chan_wr[1]));
+	sfx_chan sfx_chan2(.mcu(mcu), .aclk(aclk), .chan_idx(6'd2 + {bank_idx,3'b000}), .sfx(bank.sfx[2]), .wr_pulse(chan_wr[2]));
+	sfx_chan sfx_chan3(.mcu(mcu), .aclk(aclk), .chan_idx(6'd3 + {bank_idx,3'b000}), .sfx(bank.sfx[3]), .wr_pulse(chan_wr[3]));
+	sfx_chan sfx_chan4(.mcu(mcu), .aclk(aclk), .chan_idx(6'd4 + {bank_idx,3'b000}), .sfx(bank.sfx[4]), .wr_pulse(chan_wr[4]));
+	sfx_chan sfx_chan5(.mcu(mcu), .aclk(aclk), .chan_idx(6'd5 + {bank_idx,3'b000}), .sfx(bank.sfx[5]), .wr_pulse(chan_wr[5]));
+	sfx_chan sfx_chan6(.mcu(mcu), .aclk(aclk), .chan_idx(6'd6 + {bank_idx,3'b000}), .sfx(bank.sfx[6]), .wr_pulse(chan_wr[6]));
+	sfx_chan sfx_chan7(.mcu(mcu), .aclk(aclk), .chan_idx(6'd7 + {bank_idx,3'b000}), .sfx(bank.sfx[7]), .wr_pulse(chan_wr[7]));
 
 endmodule
 
@@ -103,7 +151,8 @@ module sfx_chan
 	input  McuBus mcu,
 	input  [7:0]aclk,
 	input  [5:0]chan_idx,
-	output SfxOut sfx
+	output SfxOut sfx,
+	output wr_pulse          // paprium: one per PCM word accepted, for the logger
 );
 
 	localparam FIFO_SIZE = 8;   // 256-entry FIFO
@@ -151,8 +200,12 @@ module sfx_chan
 			sfx.pan[1] <= pan > 'h80 ? 'h80 : pan;          //R
 		end
 
-		if(flags_we)
+		if(flags_we) begin
 			pitch <= flags[7] ? 5'd31 : flags[5] ? 5'd1 : 5'd0;  //skip 1 of 2..32 cycles
+			// paprium: 0x4000 echo and 0x0100 amplify, previously dropped
+			sfx.echo <= flags[6];
+			sfx.amp  <= flags[0];
+		end
 
 		if(vol_we)
 			sfx.vol <= vol;
@@ -169,6 +222,8 @@ module sfx_chan
 			pitch_ctr <= pitch_ctr >= pitch ? 5'd0 : pitch_ctr + 1'd1;
 
 	end
+
+	assign wr_pulse = !fifo_full & ({pcm_we_st, pcm_we} == 2'b10);
 
 	wire [15:0]mem_dato;
 
@@ -197,15 +252,54 @@ module mix_bank
 	output reg signed [15:0]snd_r
 );
 
+	// paprium: the echo GPGX applies and this port used to drop. Per sample it
+	// clears the current slot, lets echo-flagged voices accumulate into it,
+	// advances the pointer and adds the slot it lands on to the output:
+	//
+	//     echo_l[ptr] = 0;  ... voices add (sample * 33)/100 ...
+	//     ptr = (ptr+1) % (48000/6);   l += echo_l[ptr];
+	//
+	// One lap of an 8000-entry ring at 48 kHz is 166.7 ms, single tap, no
+	// feedback - overwriting each slot rather than accumulating gives the clear
+	// for free. 8000 x 32 = 256 Kbit, ~26 M10K against 62 free.
+	localparam ECHO_LEN = 13'd8000;
+
+	reg [12:0] eptr = 0;
+
+	// Read and write live in their own always blocks with an unconditional read -
+	// the only shape Quartus reliably maps to M10K here. An earlier version did
+	// both inside a case statement and synthesis fell back to registers, which
+	// blew past the device's register count entirely.
+	reg [31:0] echo_ram[8192];
+	reg [31:0] echo_rd;
+	reg        echo_we;
+	reg [31:0] echo_wdata;
+
+	always @(posedge clk) if(echo_we) echo_ram[eptr] <= echo_wdata;
+	always @(posedge clk) echo_rd <= echo_ram[eptr];
+
+	reg signed [15:0]dry_l, dry_r;
+	reg signed [15:0]send_l, send_r;
+
+	// Saturate a mix accumulator to 16 bits
+	function automatic signed [15:0] sat16(input signed [22:0] v);
+		sat16 = (v < -23'sd32768) ? 16'sh8000
+		      : (v >  23'sd32767) ? 16'sd32767
+		      :                     v[15:0];
+	endfunction
+
 	reg mix_req;
 	reg mix_next;
 	reg mix_side;   //0:L,1:R
+	reg [1:0] tail;  // paprium: echo read/write after both sides are mixed
 
 	always @(posedge clk)
 	if(next_sample) begin
 		mix_req  <= 1;
 		mix_next <= 1;
 		mix_side <= 0;
+		tail     <= 0;
+		echo_we  <= 1'b0;
 	end
 	else if(mix_next) begin
 		mix_next <= 0;
@@ -213,20 +307,42 @@ module mix_bank
 	else if(mix_req & mix_ack) begin
 
 		if(mix_side == 0) begin
-			snd_l    <= mix_snd;
+			dry_l    <= mix_snd;
+			send_l   <= sat16({{1{echo_acc[21]}}, echo_acc});
 			mix_next <= 1;
 			mix_side <= 1;
 		end
 
 		if(mix_side == 1) begin
-			snd_r   <= mix_snd;
+			dry_r   <= mix_snd;
+			send_r  <= sat16({{1{echo_acc[21]}}, echo_acc});
 			mix_req <= 0;
+			tail    <= 2'd1;
 		end
 
+	end
+	else if(tail != 0) begin
+		echo_we <= 1'b0;
+		case(tail)
+			// echo_rd already holds echo_ram[eptr] - the read runs every cycle
+			2'd1: begin
+				snd_l      <= sat16($signed(dry_l) + $signed(echo_rd[31:16]));
+				snd_r      <= sat16($signed(dry_r) + $signed(echo_rd[15:0]));
+				echo_we    <= 1'b1;
+				echo_wdata <= {send_l, send_r};
+				tail       <= 2'd2;
+			end
+			2'd2: begin
+				eptr <= (eptr == ECHO_LEN - 1'd1) ? 13'd0 : eptr + 1'd1;
+				tail <= 2'd0;
+			end
+			default: tail <= 2'd0;
+		endcase
 	end
 
 	wire mix_ack;
 	wire signed [15:0]mix_snd;
+	wire signed [21:0]echo_acc;
 
 	mix_mono mix_mono_inst
 	(
@@ -235,7 +351,8 @@ module mix_bank
 		.mix_next(mix_next),
 		.side(mix_side),
 		.ack(mix_ack),
-		.snd(mix_snd)
+		.snd(mix_snd),
+		.echo_acc(echo_acc)
 	);
 
 endmodule
@@ -249,14 +366,32 @@ module mix_mono
 	input  side,
 
 	output reg ack,
-	output reg signed [15:0]snd
+	output reg signed [15:0]snd,
+	// paprium: this side's echo send, 33% of each echo-flagged voice
+	output reg signed [21:0]echo_acc
 );
 
 	wire [3:0]chan_idx = state[5:2];
 
-	wire signed [7:0]pan  = bank.sfx[chan_idx[2:0]].pan[side];
-	wire signed [10:0]vol = bank.sfx[chan_idx[2:0]].vol;
-	wire signed [15:0]pcm = bank.sfx[chan_idx[2:0]].pcm;
+	// paprium: pan and vol are UNSIGNED in the struct, and reading them as signed
+	// of the same width misreads their top value. pan runs 0..0x80, and 8'h80 as
+	// signed is -128, so the fully-open side of every non-centred effect was
+	// phase-INVERTED - audible as cancellation once summed to the Pocket's mono
+	// speaker. Zero-extending by one bit before the signed multiply fixes both.
+	wire signed [8:0] pan  = {1'b0, bank.sfx[chan_idx[2:0]].pan[side]};
+	wire signed [11:0]vol  = {1'b0, bank.sfx[chan_idx[2:0]].vol};
+	wire signed [15:0]pcm  = bank.sfx[chan_idx[2:0]].pcm;
+
+	// paprium: GPGX gives each echo-flagged voice ONE side, alternating as voices
+	// are allocated (`voice->echo = echo_pan++ & 1`). That counter lives in the
+	// firmware and is not visible here, so the side is taken from the channel
+	// index instead - deterministic, and it spreads echo across both sides the
+	// same way. A deliberate deviation, and the only one in this feature.
+	wire ch_echo = bank.sfx[chan_idx[2:0]].echo & (chan_idx[0] == side);
+	wire ch_amp  = bank.sfx[chan_idx[2:0]].amp;
+
+	// 33/100 as 84/256: 0.328 against 0.330, well inside the 4-bit source material
+	wire signed [23:0]echo_send = ($signed(val) * 24'sd84) >>> 8;
 
 	reg signed [15:0]val;
 	reg signed [21:0]acc;
@@ -264,9 +399,10 @@ module mix_mono
 
 	always @(posedge clk)
 	if(mix_next) begin
-		state <= 0;
-		acc   <= 0;
-		ack   <= 0;
+		state    <= 0;
+		acc      <= 0;
+		ack      <= 0;
+		echo_acc <= 0;
 	end
 	else if(!ack) begin
 
@@ -277,7 +413,14 @@ module mix_mono
 				0: val <= pcm;
 				1: val <= $signed(val) * vol / 'h400;
 				2: val <= $signed(val) * pan / 'h80;
-				3: acc <= acc + val;
+				3: begin
+					// paprium: amplify scales the RUNNING mix, not the voice -
+					// GPGX does `l = (l * 125) / 100` on the accumulator inside
+					// the voice loop. x1.25 is acc + acc/4.
+					acc <= ch_amp ? ((acc + val) + ((acc + val) >>> 2))
+					              :  (acc + val);
+					if(ch_echo) echo_acc <= echo_acc + echo_send[21:0];
+				end
 			endcase
 		end
 		else begin
