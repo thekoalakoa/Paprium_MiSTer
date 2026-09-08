@@ -140,7 +140,8 @@ Strip these when seeding `Paprium_MiSTer` from Pocket lineage docs/RTL:
 3. Vendor `patches/mega-ppm-pocket.patch` + `build_mcu.sh` so firmware stays rebuildable (GPLv3 source).
 4. **Leave** `paprium_mdp_adapter.sv` and Pezz MD+/`mdp_audio` path alone (already matches Pocket’s command contract).
 5. Do **not** wire Pocket CDDA RTL; SD layout stays Pezz-style: `/media/fat/games/MegaDrive/Paprium/` + WAV + `paprium.cue` (carry Pocket one-shot / `REM NOLOOP` notes).
-6. Diff Pezz vs Pocket `paprium_cart`/`audio_sfx` after overlay; resolve any MiSTer-only ports (SDRAM port 2, save, OSD) before first fit.
+6. Diff Pezz vs Pocket `paprium_cart`/`audio_sfx` after overlay; resolve any MiSTer-only ports (SDRAM port 2, save, OSD) before first fit.  
+   **Done — see [`docs/CART_OVERLAY_REVIEW.md`](CART_OVERLAY_REVIEW.md).** Verdict: **NO-GO as-is**; restore Pezz `paprium_backup.sv` (16-bit HPS) and `$readmemh("rtl/PAPRIUM/mcu.txt")` before first Quartus.
 7. Credit: Nuked-MD → MiSTer-devel → Pezz Paprium MiSTer → paprium-pocket `0.2.1` → this tree; krikzz/mega-ppm firmware.
 
 ---
