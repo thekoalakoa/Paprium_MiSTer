@@ -2,7 +2,7 @@
 
 **Owner:** Paprium MiSTer agent  
 **Date:** 2026-09-08  
-**Status:** graft strategy locked — Option A (Pezz shell + Pocket 0.2.1 overlays); see docs/MISTER_PORT.md
+**Status:** repo created; next is graft-strategy doc before any large rewrite
 
 ## Goal
 
@@ -54,9 +54,11 @@ Shipping notes from Pocket: anim attacks + walk screen-transition fixes; bitstre
 ## First milestones
 
 1. ~~Create repo + seed fork brief~~
-2. ~~Doc-only: `docs/MISTER_PORT.md` — Option A locked~~
+2. Doc-only: `docs/MISTER_PORT.md` — graft strategy Pezz-shell vs MegaDrive_MiSTer-shell, file map, what Pocket files die (APF/`platform`/`pkg/pocket`)
 3. Skeleton: MiSTer `sys/` + top that builds *something* (even boot splash) before full Paprium graft
 4. Bring firmware + CDDA path; hardware soak on DE10 / MiSTercade
+   - Firmware/SFX/cart overlays: already on `main` (must-keep)
+   - Remaining: restore Pocket CDDA/`paprium.pcm` — see `docs/POCKET_CDDA_MISTER.md` (not Pezz cue/WAV)
 
 ## Working style
 
