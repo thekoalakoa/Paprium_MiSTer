@@ -31,7 +31,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-// MD+ debug: sticky latch — LED stays on after first MD+ command received
+// MD+ debug: sticky latch â€” LED stays on after first MD+ command received
 reg mdp_cmd_seen;
 always @(posedge clk_sys) begin
 	if (sys_reset)
@@ -308,9 +308,10 @@ wire [1:0] gun_mode = status[41:40];
 wire       gun_btn_mode = status[42];
 
 wire cart_download = ioctl_download & (ioctl_index[4:0] == 1 || ioctl_index[4:0] == 2);
-wire pcm_download  = ioctl_download & (ioctl_index[5:0] == 6'd3); // FS3 paprium.pcm (≤ ioctl addr width)
+wire pcm_download  = ioctl_download & (ioctl_index[5:0] == 6'd3); // FS3 paprium.pcm (â‰¤ ioctl addr width)
+wire cart_dl_wait;
 wire pcm_ioctl_wait;
-wire ioctl_wait = pcm_download ? pcm_ioctl_wait : 1'b0;
+wire ioctl_wait = cart_dl_wait | pcm_ioctl_wait; // cart ROM load OR FS3 pcm DDR load
 wire code_download = ioctl_download & &ioctl_index;
 wire tmss_download = ioctl_download & !ioctl_index;
 
@@ -434,7 +435,7 @@ wire        mdp_dtack;
 wire        mdp_active;
 wire [15:0] mdp_last_cmd;
 // MD+ command signals, muxed between the 68k path (md_plus -> mdplus_*) and the
-// Paprium MCU path (cartridge adapter -> ppm_*). Paprium → Pocket CDDA; else → hps_ext + mdp_audio.
+// Paprium MCU path (cartridge adapter -> ppm_*). Paprium â†’ Pocket CDDA; else â†’ hps_ext + mdp_audio.
 wire        mdplus_mdp_track_request,  ppm_mdp_track_request;
 wire  [7:0] mdplus_mdp_track_num,      ppm_mdp_track_num;
 wire        mdplus_mdp_track_loop,     ppm_mdp_track_loop;
@@ -704,7 +705,7 @@ cartridge cartridge
 	.cart_dl_addr(ioctl_addr),
 	.cart_dl_data(ioctl_data),
 	.cart_dl_wr(ioctl_wr),
-	.cart_dl_wait(ioctl_wait),
+	.cart_dl_wait(cart_dl_wait),
 
 	.cart_ms(cart_ms),
 	.cart_addr(cart_addr),
@@ -759,8 +760,8 @@ cartridge cartridge
 // MD+ Overlay (CDDA command intercept)
 ///////////////////////////////////////////////////
 
-// HPS ↔ FPGA bridge for MD+ status + audio pointer exchange (non-Paprium only).
-// Paprium BGM is Pocket CDDA/pcm — do not forward ppm_* into EXT_BUS / mdplus.cpp.
+// HPS â†” FPGA bridge for MD+ status + audio pointer exchange (non-Paprium only).
+// Paprium BGM is Pocket CDDA/pcm â€” do not forward ppm_* into EXT_BUS / mdplus.cpp.
 wire [15:0] mdp_audio_rd_ptr;
 wire [15:0] mdp_audio_wr_ptr;
 wire        mdp_audio_active;
@@ -875,7 +876,7 @@ mdp_audio mdp_audio
 	.audio_r(mdp_cdda_r)
 );
 
-// --- ioctl FS3 → DDR (≤128 MiB); full 543 MB needs HPS mmap @ PAPRIUM_PCM_BASE ---
+// --- ioctl FS3 â†’ DDR (â‰¤128 MiB); full 543 MB needs HPS mmap @ PAPRIUM_PCM_BASE ---
 wire  [7:0] load_DDRAM_BURSTCNT;
 wire [28:0] load_DDRAM_ADDR;
 wire        load_DDRAM_RD;
