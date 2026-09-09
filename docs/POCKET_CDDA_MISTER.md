@@ -1,6 +1,6 @@
 # Pocket CDDA → MiSTer — port plan (docs only)
 
-**Status:** M2(+partial M3) on `main` — Pocket CDDA stack **wired** in `MegaDrive.sv`; `paprium_cdda_fetch` is a **DDRAM** master (no APF); Paprium BGM disconnected from `hps_ext`/cue. Full ~543 MB HPS one-shot fill still needed for soak (ioctl FS3 ≤ ~128 MiB).  
+**Status:** M2+M3 on `main` — Pocket CDDA stack **wired**; DDRAM fetch; **full** `paprium.pcm` preload @ `PAPRIUM_PCM_BASE=0x10000000` (HPS mmap + `mem=256M`, not on-demand/shrink). ioctl FS3 ≤ ~128 MiB stubs only.  
 **Date:** 2026-09-08 (America/New_York)  
 **Goal correction (B Jam):** music and behavior must match **paprium-pocket `0.2.1`**, including **`paprium.pcm` (PPAD IMA ADPCM)** — **not** Pezz MD+ WAV+`.cue`.  
 **Shell:** Pezz MiSTer only (`sys/`, Quartus, DE10).  
@@ -10,7 +10,7 @@
 |---|---|---|
 | Pocket shipping | `thekoalakoa/paprium-pocket` @ tag `0.2.1` | `de08e5f999fb` |
 | Pezz shell | `MisterPezz82/Paprium_MegaDrive_MiSTer` @ `paprium-mdplus-port` | `2c256d5910e2` (V.06) |
-| This repo | `thekoalakoa/Paprium_MiSTer` @ `main` | Pezz shell + Pocket overlays; **CDDA/IMA sources present, unwired** |
+| This repo | `thekoalakoa/Paprium_MiSTer` @ `main` | Pezz shell + Pocket overlays; CDDA/IMA **wired** + full PCM preload path |
 
 > **Supersedes** the CDDA half of `docs/MISTER_PORT.md` where that doc said “keep Pezz HPS/MD+ WAV+cue” and “do not import Pocket CDDA RTL.” Shell choice (Option A — Pezz) still stands. Music path choice does **not**.
 
@@ -76,13 +76,13 @@ Blob SHAs already match Pocket `0.2.1` on `main` for `audio_sfx.sv`, `paprium_ca
 
 | Item | Pocket `0.2.1` | `Paprium_MiSTer` `main` today |
 |---|---|---|
-| Music asset | **`paprium.pcm`** (~543 MB PPAD IMA ADPCM) | **`paprium.pcm`** in DDR @ `0x04000000` (HPS/ioctl); cue/WAV not used for Paprium |
+| Music asset | **`paprium.pcm`** (~543 MB PPAD IMA ADPCM) | **`paprium.pcm`** full preload in DDR @ **`0x10000000`** (HPS mmap); cue/WAV not used for Paprium |
 | Producer | `paprium_cdda_fetch.sv` → APF dataslot **id 300** | **`paprium_cdda_fetch.sv` → DDRAM read master** (Option D) |
 | Ring + decode | `paprium_cdda_buf.sv` holds **IMA**; `paprium_ima_decode.sv` on read side | Same Pocket buf/ima (wired) |
 | Consumer | `paprium_cdda_play.sv` (48 kHz, fade, mute, volume) | Same play module → `cdda_l/r` when `paprium_active` |
 | Loop semantics | Honors MCU `$11xx` / `$12xx` in **FPGA** | Same (FPGA); Pezz cue path gated off for Paprium |
 
-`rtl/PAPRIUM/` on `main` now has Pocket `0.2.1` `paprium_cdda_*.sv` / `paprium_ima_decode.sv` (**unwired**). Remaining gap: MiSTer DDR fetch + wire-up (M2+); Pezz MD+ still owns live music.
+`rtl/PAPRIUM/` CDDA/IMA are **wired** (M2). M3 full HPS preload is documented/implemented (`0x10000000` + `mem=256M` + `thekoalakoa/Main_MiSTer`). Remaining: Quartus RBF + hardware soak (M4).
 
 ---
 
@@ -251,6 +251,40 @@ Also: `md_plus.sv` cart MD+ path muxed when `!paprium_active` (non-Paprium MD+ g
 | ioctl size limits in user_io | Verify on hardware; fallback = HPS `FileReadAdv` loop into shmem (still one-shot fill, not cue stream) |
 | Address map clash with cheats/other DDR users | Pick base explicitly; document; assert range in docs |
 
+### 5.4 Critical check — `fpga_mem` 512 MiB vs ~543 MiB pcm (B Jam)
+
+**Question:** Prior notes claimed `fpga_mem = 0x20000000 | (x & 0x1FFFFFFF)` is a 512 MiB window while `paprium.pcm` is 569,380,864 B (~543 MiB). Does `mem=` enlarge that window?
+
+**Answer (Main_MiSTer + Cyclone V / DE10):**
+
+| Fact | Detail |
+|---|---|
+| `fpga_mem` mask | **Hard 512 MiB** helper for HPS↔FPGA shared DDR in `[0x20000000, 0x40000000)`. Identity inside that range; **corrupts** addresses `< 0x20000000`. |
+| Stock fast-load | `user_io_file_tx` only accepts `load_addr ∈ [0x20000000, 0x40000000)` with `load_addr+size ≤ 0x40000000`. |
+| Physical DDR | DE10 = **1 GiB** at `0x00000000–0x3FFFFFFF`. FPGA `DDRAM_ADDR` uses physical byte_addr`[31:3]`. |
+| `mem=` / `memmap=` | Frees / reserves **Linux** pages only. **Does not** change `fpga_mem` or the F2SDRAM bridge. |
+| Stock HPS FB | `FB_ADDR = 0x22000000` (~24 MiB). Sits inside any ≥288 MiB blob based at `0x20000000`, and inside our full-pcm span if base is low enough. |
+| Geometry | 543 MiB **cannot** fit in the 512 MiB `fpga_mem` window. Shrinking/splitting the asset was **rejected**. |
+
+**Chosen full-preload map (not on-demand):**
+
+```
+mem=256M memmap=768M$256M
+
+0x00000000 – 0x0FFFFFFF   Linux (256 MiB)
+0x10000000 – ~0x31F0C400  paprium.pcm   ← PAPRIUM_PCM_BASE (FPGA + HPS)
+0x32000000 – ~0x337FFFFF  HPS framebuffer (thekoalakoa/Main_MiSTer FB_ADDR)
+0x34000000 – 0x3DFFFFFF   spare
+0x3E000000 – 0x3FFFFFFF   top spare / savestate
+```
+
+- HPS fill uses **`shmem_map(0x10000000, size)` directly** — **not** `fpga_mem`.
+- RTL `PAPRIUM_PCM_BASE` / fetch / ioctl-load defaults all use **`0x10000000`**.
+- Legacy MD+ ring `@ 0x30000000` lies **inside** the PCM span: OK while `paprium_active` (`mdp_audio` reset); non-Paprium MD+ re-inits the ring on ROM load.
+- ioctl FS3 path remains for **≤ ~128 MiB stubs** only.
+
+**Main_MiSTer patch (required):** [`thekoalakoa/Main_MiSTer`](https://github.com/thekoalakoa/Main_MiSTer) — `FB_ADDR → 0x32000000` + `support/megadrive/paprium_pcm.cpp` auto-preload on MegaDrive ROM load. Standalone tool: `scripts/paprium_pcm_preload.c`.
+
 ### 5.3 Rejected / backup options
 
 | Option | Verdict |
@@ -374,7 +408,7 @@ paprium_cmd_log.sv        # optional diag only
 - [x] File restore list + APF replacement interface + first PR size stated  
 - [x] M1: four CDDA/IMA SV + `files.qip` on `main`, **unwired** (no instantiate in `MegaDrive.sv` / `paprium_cart.sv`)
 - [x] M2 RTL (DDR fetch rewrite + MegaDrive wire-up; Paprium off hps_ext music)
-- [~] M3 load path (ioctl FS3 stub + documented DDR base `0x04000000`; full HPS mmap helper TBD)
+- [x] M3 load path (full HPS mmap @ `0x10000000` + `mem=256M`; ioctl FS3 stub retained)
 - [ ] M4 hardware soak
 
 ---
@@ -390,4 +424,59 @@ paprium_cmd_log.sv        # optional diag only
 
 ---
 
-*End of plan. Implement M1+ only after this doc is on the repo.*
+## 12. DE10 — exact mem= / install (full preload)
+
+**Success criteria:** B Jam can preload **entire** `paprium.pcm` into DDR for existing fetch RTL (no on-demand, no shrink).
+
+### 12.1 Bootargs
+
+Merge into linux u-boot / core companion `.txt` (see `releases/Paprium_mem256_u-boot.txt`):
+
+```
+root=/dev/mmcblk0p2 rootwait mem=256M memmap=768M$256M ttyS0,115200
+```
+
+Reboot. Confirm with `cat /proc/cmdline` and that `free -m` shows ~256 MiB class RAM.
+
+### 12.2 Main_MiSTer
+
+Install binary built from [`thekoalakoa/Main_MiSTer`](https://github.com/thekoalakoa/Main_MiSTer) (Paprium FB + `paprium_pcm_init`). Stock MiSTer FB at `0x22000000` **will corrupt** the PCM image.
+
+### 12.3 SD assets
+
+```
+/media/fat/games/MegaDrive/Paprium/
+  Paprium.md      # dump
+  paprium.pcm     # full PPAD ~543 MB (569,380,864 B shipping)
+```
+
+### 12.4 Run
+
+1. Launch Paprium MegaDrive RBF.
+2. Load `Paprium.md` — OSD shows **Paprium PCM** progress while HPS copies the full blob to `0x10000000`.
+3. In-game BGM: fetch magic/`blob_ok` should pass; SFX path unchanged.
+4. Optional verify tool: `scripts/paprium_pcm_preload` (same address contract).
+
+### 12.5 How to test
+
+| Check | Expect |
+|---|---|
+| `/proc/cmdline` | contains `mem=256M` and `memmap=768M$256M` |
+| Preload log | `full preload OK @ 0x10000000` / tool prints `OK — full paprium.pcm resident` |
+| Missing pcm | silent BGM, gameplay + SFX OK (`blob_ok=0`) |
+| Wrong magic | silent BGM |
+| Track play | Pocket one-shot / loop semantics via FPGA `$11`/`$12` |
+| Underrun counter | stable after fill on soak |
+
+### 12.6 Risks
+
+| Risk | Notes |
+|---|---|
+| Linux only 256 MiB | Fine for dedicated Paprium DE10; other heavy HPS apps may feel RAM pressure |
+| Global FB move | Fork changes FB for **all** cores using this MiSTer binary |
+| MD+ ring clobber | `0x30000000` inside PCM; non-Paprium MD+ must re-init (does on ROM load) |
+| SD load time | ~543 MB from SD — tens of seconds; progress OSD |
+| Address drift | FPGA `PAPRIUM_PCM_BASE` **must** stay `0x10000000` with HPS tool/Main_MiSTer |
+
+*End of plan. M1–M3 landed; M4 = hardware soak on B Jam DE10.*
+

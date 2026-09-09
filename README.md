@@ -27,7 +27,27 @@ Same as Pocket: **your own cartridge dump** and **`paprium.pcm`** for background
 - **Music = `paprium.pcm`, not `.cue` / WAV.**
 - Missing or invalid `paprium.pcm` → **silent BGM**; gameplay + Pocket SFX still work (`blob_ok=0`).
 - Build the blob with Pocket `0.2.1` scripts from a legal rip.
-- FPGA DDR base for the blob: **`0x04000000`** (see `PAPRIUM_PCM_BASE` in `MegaDrive.sv`). Full ~543 MB load needs an HPS one-shot fill into that address (ioctl FS3 is capped by `ioctl_addr` width ~128 MiB — fine for test stubs only).
+- FPGA / HPS DDR base for the blob: **`0x10000000`** (`PAPRIUM_PCM_BASE` in `MegaDrive.sv`).
+- **Full ~543 MB preload** (not on-demand, not shrink/split): see [docs/POCKET_CDDA_MISTER.md](docs/POCKET_CDDA_MISTER.md) §5.4 / §12 and DE10 steps below.
+- ioctl FS3 remains for **≤ ~128 MiB test stubs only**.
+
+### DE10 install — full `paprium.pcm` preload
+
+1. **Bootargs** (required — `mem=` frees Linux RAM; it does **not** enlarge `fpga_mem`):
+   ```
+   mem=256M memmap=768M$256M
+   ```
+   Snippet: [`releases/Paprium_mem256_u-boot.txt`](releases/Paprium_mem256_u-boot.txt). Merge into your linux u-boot script / core `.txt`, then reboot.
+2. **Main_MiSTer** from [`thekoalakoa/Main_MiSTer`](https://github.com/thekoalakoa/Main_MiSTer) (FB moved to `0x32000000` + auto `paprium_pcm_init` on ROM load). Stock `FB_ADDR` at `0x22000000` collides with the PCM span.
+3. Place assets:
+   ```
+   /media/fat/games/MegaDrive/Paprium/Paprium.md
+   /media/fat/games/MegaDrive/Paprium/paprium.pcm   # full PPAD, ~543 MB
+   ```
+4. Load the Paprium MegaDrive core + ROM. HPS copies the **entire** pcm into DDR `@ 0x10000000` (progress OSD). FPGA fetch RTL then random-accesses that blob.
+5. Optional manual tool: `scripts/paprium_pcm_preload.c` → build on HPS with `scripts/build_pcm_preload.sh`.
+
+**Layout:** Linux `0x00000000–0x0FFFFFFF` · PCM `0x10000000–~0x31F0C400` · HPS FB `0x32000000+`.
 
 ## Lineage (GPLv3)
 
