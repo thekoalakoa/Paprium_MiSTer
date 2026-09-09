@@ -826,7 +826,7 @@ md_plus md_plus
 
 localparam CDDA_CHUNK      = 4096;
 localparam CDDA_CHUNKS     = 4;
-localparam [31:0] PAPRIUM_PCM_BASE = 32'h0400_0000; // DDR byte addr; HPS one-shot fill
+localparam [31:0] PAPRIUM_PCM_BASE = 32'h1000_0000; // DDR byte addr; full paprium.pcm (mem=256M + HPS mmap)
 
 wire signed [15:0] mdp_cdda_l, mdp_cdda_r;
 wire signed [15:0] pcm_cdda_l, pcm_cdda_r;

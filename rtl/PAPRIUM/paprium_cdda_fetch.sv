@@ -3,7 +3,7 @@
 //
 // Pocket 0.2.1 used an APF dataslot (id 300) + BRIDGE data_loader to random-
 // access paprium.pcm (PPAD IMA). MiSTer has no APF; the whole blob is one-shot
-// loaded into DDR (HPS mmap preferred; ioctl FS3 for ≤128 MiB test blobs) at
+// loaded into DDR (HPS full mmap @ 0x10000000; ioctl FS3 ≤128 MiB stubs) at
 // BLOB_BASE_BYTE. This module is a DDRAM read master that keeps the Pocket
 // magic / header / chunk state-machine semantics.
 //
@@ -14,10 +14,14 @@
 // ---------------------------------------------------------------------------
 
 module paprium_cdda_fetch #(
-	// Byte address in the FPGA DDRAM map. 64 MiB — leaves the legacy MD+
-	// 64 KB ring at 0x30000000 clear for non-Paprium MD+ games.
-	// ~543 MB PPAD ends near 0x25F00000 (< 1 GiB).
-	parameter [31:0] BLOB_BASE_BYTE = 32'h0400_0000,
+	// Byte address in FPGA/HPS physical DDR (same number both sides).
+	// Full paprium.pcm is ~543 MB (569,380,864 B). That exceeds the stock
+	// fpga_mem 512 MB window (0x20000000..0x3FFFFFFF), so we place the blob
+	// at 0x10000000 and free Linux via mem=256M + memmap (see docs).
+	// End ≈ 0x31F0C400; Main_MiSTer FB moves to 0x32000000.
+	// Legacy MD+ 64 KB ring at 0x30000000 sits inside this span — OK while
+	// paprium_active (mdp_audio held in reset); non-Paprium MD+ re-inits.
+	parameter [31:0] BLOB_BASE_BYTE = 32'h1000_0000,
 	parameter        CHUNK_BYTES    = 4096,
 	parameter        NUM_CHUNKS     = 4,
 	parameter        CHUNK_W        = $clog2(NUM_CHUNKS),

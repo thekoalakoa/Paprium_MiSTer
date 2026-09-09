@@ -2,7 +2,8 @@
 // One-shot paprium.pcm → DDRAM loader (ioctl FS3 path).
 //
 // hps_io ioctl_addr is 27 bits → practical cap ~128 MiB. Full shipping PPAD
-// (~543 MB) must be filled by HPS mmap into BLOB_BASE_BYTE (see docs). This
+// (~543 MB) MUST be filled by HPS mmap into BLOB_BASE_BYTE=0x10000000
+// (scripts/paprium_pcm_preload + mem=256M). Do not shrink the asset. This
 // module still serves:
 //   - small / truncated test blobs
 //   - future hps_io addr widen
@@ -12,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 module paprium_pcm_load #(
-	parameter [31:0] BLOB_BASE_BYTE = 32'h0400_0000
+	parameter [31:0] BLOB_BASE_BYTE = 32'h1000_0000
 ) (
 	input             clk,
 	input             reset,

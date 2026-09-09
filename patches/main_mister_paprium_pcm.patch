@@ -1,0 +1,196 @@
+diff --git a/README.md b/README.md
+index 4f382f5..ad262a3 100644
+--- a/README.md
++++ b/README.md
+@@ -7,3 +7,10 @@ For the purposes of getting google to crawl the wiki, here's a link to the (not
+ If you're a human looking for the wiki, that's [here](https://github.com/MiSTer-devel/Wiki_MiSTer/wiki)
+ 
+ To compile this application, read more about that [here](https://mister-devel.github.io/MkDocs_MiSTer/developer/mistercompile/#general-prerequisites-for-arm-cross-compiling)
++
++## Paprium fork note (thekoalakoa)
++
++This fork relocates `FB_ADDR` to `0x32000000` and adds `support/megadrive/paprium_pcm.cpp`
++so the Paprium MegaDrive core can **full-preload** `paprium.pcm` (~543 MB) at physical
++`0x10000000`. Bootargs must include `mem=256M memmap=768M$256M`. See
++[Paprium_MiSTer](https://github.com/thekoalakoa/Paprium_MiSTer) docs.
+diff --git a/support.h b/support.h
+index 9d26699..04b7bdc 100644
+--- a/support.h
++++ b/support.h
+@@ -30,6 +30,7 @@
+ 
+ // MegaDrive  support
+ #include "support/megadrive/mdplus.h"
++#include "support/megadrive/paprium_pcm.h"
+ 
+ // N64  support
+ #include "support/n64/n64.h"
+diff --git a/support/megadrive/paprium_pcm.cpp b/support/megadrive/paprium_pcm.cpp
+new file mode 100644
+index 0000000..829ef39
+--- /dev/null
++++ b/support/megadrive/paprium_pcm.cpp
+@@ -0,0 +1,124 @@
++// Full paprium.pcm preload into DDR for Paprium_MiSTer (Pocket PPAD / Option D).
++//
++// Critical: do NOT use fpga_mem(). That helper masks to a 512 MiB window at
++// 0x20000000..0x3FFFFFFF; paprium.pcm is ~543 MiB. We mmap the physical base
++// 0x10000000 directly. mem= frees Linux from that range — it does not enlarge
++// fpga_mem.
++
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <ctype.h>
++
++#include "../../user_io.h"
++#include "../../file_io.h"
++#include "../../shmem.h"
++#include "../../menu.h"
++#include "paprium_pcm.h"
++
++#define PAPRIUM_PCM_BASE   0x10000000u
++#define PAPRIUM_PCM_MAX    0x22000000u
++#define PAPRIUM_PCM_EXPECT 569380864ull
++
++static void dirname_of(const char *path, char *out, size_t out_sz)
++{
++	snprintf(out, out_sz, "%s", path);
++	char *slash = strrchr(out, '/');
++	if (slash) *slash = 0;
++	else snprintf(out, out_sz, ".");
++}
++
++static int try_load(const char *pcm_path)
++{
++	fileTYPE f = {};
++	if (!FileOpen(&f, pcm_path)) return 0;
++
++	uint64_t size = (uint64_t)FileGetSize(&f);
++	printf("Paprium PCM: opening %s (%llu bytes)\n", pcm_path, (unsigned long long)size);
++
++	if (size < 0x1000 || size > PAPRIUM_PCM_MAX) {
++		printf("Paprium PCM: rejected size (need 4K..%u)\n", PAPRIUM_PCM_MAX);
++		FileClose(&f);
++		return 0;
++	}
++
++	uint8_t mag[4] = {};
++	if (FileReadAdv(&f, mag, 4) != 4 || memcmp(mag, "PPAD", 4) != 0) {
++		printf("Paprium PCM: bad magic (want PPAD)\n");
++		FileClose(&f);
++		return 0;
++	}
++	FileSeek(&f, 0, SEEK_SET);
++
++	// Direct physical map — identity, not fpga_mem(base).
++	uint8_t *mem = (uint8_t *)shmem_map(PAPRIUM_PCM_BASE, (uint32_t)size);
++	if (!mem) {
++		printf("Paprium PCM: mmap 0x%08X failed — check mem=256M memmap=768M$256M\n",
++		       PAPRIUM_PCM_BASE);
++		FileClose(&f);
++		return 0;
++	}
++
++	uint64_t done = 0;
++	uint8_t buf[256 * 1024];
++	while (done < size) {
++		uint32_t chunk = (uint32_t)((size - done > sizeof(buf)) ? sizeof(buf) : (size - done));
++		if (FileReadAdv(&f, buf, chunk) != (int)chunk) {
++			printf("Paprium PCM: short read @ %llu\n", (unsigned long long)done);
++			shmem_unmap(mem, (uint32_t)size);
++			FileClose(&f);
++			return 0;
++		}
++		memcpy(mem + done, buf, chunk);
++		done += chunk;
++		ProgressMessage("Paprium PCM", pcm_path, (uint32_t)done, (uint32_t)size);
++	}
++
++	int ok = (memcmp(mem, "PPAD", 4) == 0);
++	shmem_unmap(mem, (uint32_t)size);
++	FileClose(&f);
++
++	if (!ok) {
++		printf("Paprium PCM: DDR verify failed\n");
++		return 0;
++	}
++
++	if (size != PAPRIUM_PCM_EXPECT) {
++		printf("Paprium PCM: warning size %llu != shipping %llu\n",
++		       (unsigned long long)size, (unsigned long long)PAPRIUM_PCM_EXPECT);
++	}
++	printf("Paprium PCM: full preload OK @ 0x%08X (%llu bytes)\n",
++	       PAPRIUM_PCM_BASE, (unsigned long long)size);
++	return 1;
++}
++
++void paprium_pcm_init(const char *rom_path)
++{
++	if (!rom_path || !rom_path[0]) return;
++	if (strcasecmp(user_io_get_core_name(1), "MegaDrive")) return;
++
++	char dir[1024];
++	dirname_of(rom_path, dir, sizeof(dir));
++
++	char cand[2048];
++	const char *names[] = {
++		"paprium.pcm",
++		"Paprium.pcm",
++		"PAPRIUM.PCM",
++	};
++
++	// 1) Same directory as the ROM
++	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
++		snprintf(cand, sizeof(cand), "%s/%s", dir, names[i]);
++		if (try_load(cand)) return;
++	}
++
++	// 2) Conventional games path
++	snprintf(cand, sizeof(cand),
++		 "/media/fat/games/MegaDrive/Paprium/paprium.pcm");
++	if (try_load(cand)) return;
++
++	printf("Paprium PCM: no paprium.pcm found next to ROM or under "
++	       "games/MegaDrive/Paprium/ — BGM silent (blob_ok=0)\n");
++}
+diff --git a/support/megadrive/paprium_pcm.h b/support/megadrive/paprium_pcm.h
+new file mode 100644
+index 0000000..64f67a0
+--- /dev/null
++++ b/support/megadrive/paprium_pcm.h
+@@ -0,0 +1,8 @@
++#ifndef MEGADRIVE_PAPRIUM_PCM_H
++#define MEGADRIVE_PAPRIUM_PCM_H
++
++// One-shot full paprium.pcm → physical DDR @ PAPRIUM_PCM_BASE (0x10000000).
++// Requires bootargs mem=256M memmap=768M$256M and FB_ADDR @ 0x32000000.
++void paprium_pcm_init(const char *rom_path);
++
++#endif
+diff --git a/user_io.cpp b/user_io.cpp
+index 511c7a4..8157396 100644
+--- a/user_io.cpp
++++ b/user_io.cpp
+@@ -2959,6 +2959,7 @@ int user_io_file_tx(const char* name, unsigned char index, char opensave, char m
+ 	}
+ 
+ 	mdplus_init(name); // MD+ CDDA init
++	paprium_pcm_init(name); // Paprium full paprium.pcm DDR preload
+ 
+ 	return 1;
+ }
+diff --git a/video.cpp b/video.cpp
+index acd9e44..e34ba18 100644
+--- a/video.cpp
++++ b/video.cpp
+@@ -34,7 +34,7 @@
+ #include "lib/md5/md5.h"
+ 
+ #define FB_SIZE  (1920*1080)
+-#define FB_ADDR  (0x20000000 + (32*1024*1024)) // 512mb + 32mb(Core's fb)
++#define FB_ADDR  0x32000000u /* Paprium: was 0x22000000; PCM owns 0x10000000..~0x31F0C400 */
+ 
+ /*
+ --  [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp

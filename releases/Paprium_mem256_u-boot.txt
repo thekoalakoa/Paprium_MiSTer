@@ -1,0 +1,20 @@
+# Paprium_MiSTer — DDR layout for FULL paprium.pcm preload (~543 MB)
+#
+# Stock MiSTer often boots with something like:
+#   mem=0x3F000000 memmap=16M$0x3F000000
+# That does NOT free a contiguous 543 MB hole below the HPS framebuffer.
+#
+# Required bootargs (merge into your linux boot script / core .txt):
+#   mem=256M memmap=768M$256M
+#
+# Layout:
+#   0x00000000-0x0FFFFFFF  Linux (256 MiB)
+#   0x10000000-0x31F0C3FF  paprium.pcm  (PAPRIUM_PCM_BASE)
+#   0x32000000-…           HPS FB (thekoalakoa/Main_MiSTer FB_ADDR patch)
+#   0x3E000000-0x3FFFFFFF  top spare / savestate
+#
+# mem= does NOT enlarge Main_MiSTer fpga_mem (still 512 MiB @ 0x20000000).
+# Full preload uses direct /dev/mem mmap in paprium_pcm_preload — not fpga_mem.
+#
+# Example override (adjust to match your image's root= device):
+setenv bootargs 'root=/dev/mmcblk0p2 rootwait mem=256M memmap=768M$256M ttyS0,115200'
