@@ -6,19 +6,12 @@
 # Replicates repos/mega-ppm/mcu/Makefile, because Git Bash has no make. Same
 # flags, same linker script, same image generator - only the driver differs.
 #
-# Output goes to build_output/mcu/ so krikzz's tree is never modified: the
-# reference mcu.txt in that repo is our only known-good baseline for comparison.
+# Output goes to build_output/mcu/ so the mega-ppm tree is never modified.
 #
-# WHY: the punk-TV cue dies because sfx_player_update abandons a channel once
-# size hits 0, so the game's later sfx_loop (which enables looping and ramps the
-# volume) lands on a dead channel. The fix is two lines in sfx_loop. It is
-# firmware, so it cannot be done in RTL.
+# The firmware changes are in patches/mega-ppm-pocket.patch (see patches/README.md).
 #
-# NOTE ON SIZE: our shipping mcu.txt is 15,848 bytes against a 16 KB IMEM - 536
-# bytes spare. That limit is imposed by rtl/PAPRIUM/mcu_core.sv (`rom[16384/4]`
-# and `addr[13:2]`), NOT by the linker, whose script already allows 256 KB. If a
-# rebuild overflows, growing the IMEM is cheap: 32 KB costs ~13 more M10K against
-# 62 free. Try -Os first; grow the RAM if that is not enough.
+# NOTE ON SIZE: the instruction memory size is set in rtl/PAPRIUM/mcu_core.sv.
+# If a rebuild overflows, try -Os first.
 
 set -euo pipefail
 
@@ -93,15 +86,8 @@ else
     echo "fits, $((32768 - BYTES)) bytes spare"
 fi
 
-# INSTALL it. This script used to build into build_output/ and merely PRINT the
-# rtl copy as a "reference build for comparison", which reads like confirmation
-# and is not: Quartus reads rtl/PAPRIUM/mcu.txt ($readmemh in mcu_core.sv), so a
-# build run after this script alone silently used the OLD firmware.
-#
-# That cost a full 25-minute fit, and the timing gate cannot catch it - ALM,
-# M10K, setup and hold all come back identical to shipping, which is exactly what
-# "firmware-only, no RTL touched" is supposed to look like. It is also what
-# "nothing changed at all" looks like. See docs/BUILD_REFERENCE.md.
+# Install the result: Quartus reads rtl/PAPRIUM/mcu.txt ($readmemh in mcu_core.sv),
+# so the new firmware must be copied there before a Quartus compile.
 if [ -f "$OUT/mcu.txt" ]; then
     PREV=""
     [ -f "$PROJECT_DIR/rtl/PAPRIUM/mcu.txt" ] && \
