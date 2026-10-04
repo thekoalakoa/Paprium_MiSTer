@@ -108,7 +108,7 @@ CEGen fltce
 wire [15:0] psg_amp = PSG + PSG[15:1];
 
 // 8KHz 2tap
-IIR_filter
+IIR_filter_psga
 #(
 	.use_params(1),
 	.stereo(0),
@@ -171,5 +171,136 @@ genesis_lpf lpf_right
 
 assign AUDIO_L = mute ? 16'd0 : audio_l;
 assign AUDIO_R = mute ? 16'd0 : audio_r;
+
+endmodule
+
+// FXPSGA: private copy of sys/iir_filter.v IIR_filter, used ONLY by psg_iir above.
+// Only change vs the shared module: the free-running register on x (see the x_pre/x lines).
+// iir_filter_tap is the unchanged shared module from sys/iir_filter.v.
+module IIR_filter_psga
+#(
+	parameter use_params = 1,                     // set to 1 to use following parameters, 0 for input port variables.
+	parameter stereo   =  1,                      // 0 for mono (input_l)
+
+	parameter coeff_x  =  0.00000774701983513660, // Base gain value for X. Float. Range: 0.0 ... 0.999(9)
+	parameter coeff_x0 =  3,                      // Gain scale factor for X0. Integer. Range -7 ... +7
+	parameter coeff_x1 =  3,                      // Gain scale factor for X1. Integer. Range -7 ... +7
+	parameter coeff_x2 =  1,                      // Gain scale factor for X2. Integer. Range -7 ... +7
+	parameter coeff_y0 = -2.96438150626551080000, // Coefficient for Y0. Float. Range -3.999(9) ... 3.999(9)
+	parameter coeff_y1 =  2.92939452735121100000, // Coefficient for Y1. Float. Range -3.999(9) ... 3.999(9)
+	parameter coeff_y2 = -0.96500747158831091000  // Coefficient for Y2. Float. Range -3.999(9) ... 3.999(9)
+)
+(
+	input         clk,
+	input         reset,
+
+	input         ce,        // must be double of calculated rate for stereo!
+	input         sample_ce, // desired output sample rate
+
+	input  [39:0] cx,
+	input   [7:0] cx0,
+	input   [7:0] cx1,
+	input   [7:0] cx2,
+	input  [23:0] cy0,
+	input  [23:0] cy1,
+	input  [23:0] cy2,
+
+	input  [15:0] input_l,  input_r,  // signed samples
+	output [15:0] output_l, output_r  // signed samples
+);
+
+localparam  [39:0] pcoeff_x  = coeff_x  * 40'h8000000000;
+localparam  [31:0] pcoeff_y0 = coeff_y0 * 24'h200000;
+localparam  [31:0] pcoeff_y1 = coeff_y1 * 24'h200000;
+localparam  [31:0] pcoeff_y2 = coeff_y2 * 24'h200000;
+
+wire [39:0] vcoeff    = use_params ? pcoeff_x        : cx;
+wire [23:0] vcoeff_y0 = use_params ? pcoeff_y0[23:0] : cy0;
+wire [23:0] vcoeff_y1 = use_params ? pcoeff_y1[23:0] : cy1;
+wire [23:0] vcoeff_y2 = use_params ? pcoeff_y2[23:0] : cy2;
+
+wire [59:0] inp_mul = $signed(inp) * $signed(vcoeff);
+
+wire [39:0] x_pre = inp_mul[59:20];
+reg  [39:0] x;
+always @(posedge clk) x <= x_pre; // FXPSGA: free-running register on x (no ce, no reset)
+wire [39:0] y = x + tap0;
+
+wire [39:0] tap0;
+iir_filter_tap iir_tap_0
+(
+	.clk(clk),
+	.reset(reset),
+	.ce(ce),
+	.ch(ch),
+	.cx(use_params ? coeff_x0[7:0] : cx0),
+	.cy(vcoeff_y0),
+	.x(x),
+	.y(y),
+	.z(tap1),
+	.tap(tap0)
+);
+
+wire [39:0] tap1;
+iir_filter_tap iir_tap_1
+(
+	.clk(clk),
+	.reset(reset),
+	.ce(ce),
+	.ch(ch),
+	.cx(use_params ? coeff_x1[7:0] : cx1),
+	.cy(vcoeff_y1),
+	.x(x),
+	.y(y),
+	.z(tap2),
+	.tap(tap1)
+);
+
+wire [39:0] tap2;
+iir_filter_tap iir_tap_2
+(
+	.clk(clk),
+	.reset(reset),
+	.ce(ce),
+	.ch(ch),
+	.cx(use_params ? coeff_x2[7:0] : cx2),
+	.cy(vcoeff_y2),
+	.x(x),
+	.y(y),
+	.z(0),
+	.tap(tap2)
+);
+
+wire [15:0] y_clamp = (~y[39] & |y[38:35]) ? 16'h7FFF : (y[39] & ~&y[38:35]) ? 16'h8000 : y[35:20];
+
+reg        ch = 0;
+reg [15:0] out_l, out_r, out_m;
+reg [15:0] inp, inp_m;
+always @(posedge clk) if (ce) begin
+	if(!stereo) begin
+		ch    <= 0;
+		inp   <= input_l;
+		out_l <= y_clamp;
+		out_r <= y_clamp;
+	end
+	else begin
+		ch <= ~ch;
+		if(ch) begin
+			out_m <= y_clamp;
+			inp   <= inp_m;
+		end
+		else begin
+			out_l <= out_m;
+			out_r <= y_clamp;
+			inp   <= input_l;
+			inp_m <= input_r;
+		end
+	end
+end
+
+reg [31:0] out;
+always @(posedge clk) if (sample_ce) out <= {out_l, out_r};
+
+assign {output_l, output_r} = out;
 
 endmodule

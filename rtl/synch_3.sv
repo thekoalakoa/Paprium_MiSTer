@@ -1,7 +1,10 @@
 // 3-stage synchronizer (from Analogue Pocket apf/common.v).
 // Needed by paprium_cdda_buf / paprium_cdda_fetch chunk Gray CDC.
 // When both sides share clk_sys the extra latency is harmless.
-
+//
+// paprium-pocket 0.2.3: keep this as FLOPS, not ALTSHIFT_TAPS / M10K.
+// AUTO_SHIFT_REGISTER_RECOGNITION OFF on the entity (width-independent).
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
 module synch_3 #(parameter WIDTH = 1) (
 	input  wire [WIDTH-1:0] i,
 	output reg  [WIDTH-1:0] o,

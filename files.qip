@@ -1,5 +1,5 @@
 set_global_assignment -name QIP_FILE rtl/VM2413/opll.qip
-set_global_assignment -name QIP_FILE rtl/SVP/SVP.qip
+# set_global_assignment -name QIP_FILE rtl/SVP/SVP.qip  # Paprium: SVP stripped
 set_global_assignment -name QIP_FILE rtl/nuked-md.qip
 set_global_assignment -name VHDL_FILE rtl/bram.vhd
 set_global_assignment -name VERILOG_FILE rtl/ram_md.v
@@ -9,7 +9,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/EEPROM_24CXX.sv
 set_global_assignment -name VERILOG_FILE rtl/audio_iir_filter.v
 set_global_assignment -name VERILOG_FILE rtl/genesis_lpf.v
 set_global_assignment -name VHDL_FILE rtl/CEGen.vhd
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
+# set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv  # Paprium: cheats OSD stripped
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio_cond.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video_cond.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cofi.sv

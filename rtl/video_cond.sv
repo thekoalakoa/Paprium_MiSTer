@@ -53,7 +53,8 @@ module video_cond
 	output            hs_out,
 	output            vs_out,
 	output            hbl_out,
-	output            vbl_out
+	output            vbl_out,
+	output            dbg_hs_clean // INSTRUMENT I: debug tap of internal hs_clean (observe-only)
 );
 
 reg   [1:0] res_h = 0; // 248/256/320/320cor
@@ -74,6 +75,7 @@ wire hs_begin = hs_d & ~hs_in;
 wire hs_end   = ~hs_d & hs_in;
 
 reg        hs_clean;
+assign dbg_hs_clean = hs_clean; // INSTRUMENT I
 reg [12:0] hcnt;
 always @(posedge clk) begin
 	hcnt <= hcnt + 1'd1;

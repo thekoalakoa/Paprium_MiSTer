@@ -387,45 +387,13 @@ always_comb begin
 	end
 end
 
-reg [16:1] ram_rst_a;
-always @(posedge clk) ram_rst_a <= ram_rst_a + 1'd1;
-
-wire [15:0] sram2_addr;
-wire [15:0] sram2_di;
-wire [15:0] sram2_q;
-wire        sram2_wren;
-
-always_comb begin
-	if(cart_dl) begin
-		sram2_addr = ram_rst_a;
-		sram2_di   = sram00_quirk ? 16'h0000 : 16'hFFFF;
-		sram2_wren = 1;
-	end
-	else if(svp_quirk) begin
-		sram2_addr = svp_dram_a;
-		sram2_di   = svp_dram_do;
-		sram2_wren = svp_dram_we;
-	end
-	else begin
-		sram2_addr = save_addr;
-		sram2_di   = save_di;
-		sram2_wren = save_wr;
-	end
-end
-
-dpram_dif #(17,8,16,16) ram
-(
-	.clock(clk),
-	.address_a(sram_addr),
-	.data_a(sram_di),
-	.wren_a(sram_wren),
-	.q_a(sram_q),
-
-	.address_b(sram2_addr),
-	.data_b(sram2_di),
-	.wren_b(sram2_wren),
-	.q_b(sram2_q)
-);
+// FXR2: cart SRAM/EEPROM/save RAM (the 128 KB, 128-M10K true dual-port RAM named ram) removed for the Paprium-only build.
+// Removed with it: its port-B mux (cart_dl clear / SVP DRAM / HPS save) and the ram_rst_a clear counter (dead after removal).
+// Paprium saves use paprium_backup: save_do/save_change below still select paprium_save_do/paprium_save_change when paprium_active.
+// Read data is the blank-SRAM pattern 0xFF (what the cart_dl clear loop wrote for !sram00_quirk carts).
+// sram_q is never selected for Paprium: md_sram_cs needs md_bank_sram (blocked for paprium_quirk) or cart_addr >= rom_sz.
+wire [15:0] sram2_q = 16'hFFFF;
+assign sram_q = 8'hFF;
 
 assign save_do     = paprium_active ? paprium_save_do     : sram2_q;
 assign save_change = paprium_active ? paprium_save_change : sram_wren;
@@ -553,41 +521,53 @@ paprium_cart paprium
 	.mem_ack(rom2_ack)
 );
 
+// Paprium-only: SVP (Virtua Racing) stripped to reclaim M10K/ALM
+localparam ENABLE_SVP = 0;
+
 wire [15:0] svp_data;
 wire        svp_dtack_n;
-
 wire [15:0] svp_dram_a;
 wire [15:0] svp_dram_do;
 wire        svp_dram_we;
 
-reg svp_ce;
-always @(posedge clk) svp_ce <= ~reset & ~svp_ce;
+generate
+if (ENABLE_SVP) begin : gen_svp
+	reg svp_ce;
+	always @(posedge clk) svp_ce <= ~reset & ~svp_ce;
 
-SVP svp
-(
-	.CLK(clk),
-	.CE(svp_ce),
-	.RST_N(~reset & svp_quirk),
-	.ENABLE(1),
+	SVP svp
+	(
+		.CLK(clk),
+		.CE(svp_ce),
+		.RST_N(~reset & svp_quirk),
+		.ENABLE(1),
 
-	.BUS_A(cart_addr[23:1]),
-	.BUS_DO(svp_data),
-	.BUS_DI(cart_data_wr),
-	.BUS_SEL(cart_oe | cart_lwr),
-	.BUS_RNW(~cart_lwr),
-	.BUS_DTACK_N(svp_dtack_n),
-	.DMA_ACTIVE(cart_dma),
+		.BUS_A(cart_addr[23:1]),
+		.BUS_DO(svp_data),
+		.BUS_DI(cart_data_wr),
+		.BUS_SEL(cart_oe | cart_lwr),
+		.BUS_RNW(~cart_lwr),
+		.BUS_DTACK_N(svp_dtack_n),
+		.DMA_ACTIVE(cart_dma),
 
-	.ROM_A(rom2_a),
-	.ROM_DI(rom2_data),
-	.ROM_REQ(rom2_req),
-	.ROM_ACK(rom2_ack),
+		.ROM_A(rom2_a),
+		.ROM_DI(rom2_data),
+		.ROM_REQ(rom2_req),
+		.ROM_ACK(rom2_ack),
 
-	.DRAM_A(svp_dram_a),
-	.DRAM_DI(sram2_q),
-	.DRAM_DO(svp_dram_do),
-	.DRAM_WE(svp_dram_we)
-);
+		.DRAM_A(svp_dram_a),
+		.DRAM_DI(sram2_q),
+		.DRAM_DO(svp_dram_do),
+		.DRAM_WE(svp_dram_we)
+	);
+end else begin : gen_svp_stub
+	assign svp_data    = 16'h0;
+	assign svp_dtack_n = 1'b1;
+	assign svp_dram_a  = 16'h0;
+	assign svp_dram_do = 16'h0;
+	assign svp_dram_we = 1'b0;
+end
+endgenerate
 
 // SRAM
 wire md_sram_cs = ~cart_ms && (cart_addr[23:21] == 1) && (md_bank_sram || (cart_addr >= rom_sz && ~&cart_addr[20:19])) && ~noram_quirk;
@@ -640,24 +620,14 @@ wire eeprom_sda = {eeprom_sdao & eeprom_sdai};
 //                                        C01     C01     C02     C16      C65       C08      C04
 wire [12:0] eeprom_mask[8] = '{13'h00, 13'h7f, 13'h7f, 13'hff, 13'h7ff, 13'h1fff, 13'h3ff, 13'h1ff};
 
-EPPROM_24CXX e24cxx
-(
-	.clk(clk),
-	.rst(reset),
-	.en(1),
-
-	.mode((eeprom_quirk[2:0] <= 3'b010) ? 2'd0 : (eeprom_quirk[2:0] == 3'b101) ? 2'd2 : 2'd1),
-	.mask(eeprom_mask[eeprom_quirk[2:0]]),
-
-	.sda_i(eeprom_sdai),
-	.sda_o(eeprom_sdao),
-	.scl(eeprom_scl),
-
-	.ram_addr(eeprom_ram_a),
-	.ram_d(eeprom_ram_d),
-	.ram_wr(eeprom_ram_we),
-	.ram_q(sram_q)
-);
+// FXMAPPER1B: EPPROM_24CXX e24cxx removed (non-Paprium X24C01..24C65 EEPROM cores). Outputs tied to idle:
+//   sda_o = 1 (module's IDLE/released-bus level), ram_addr = 0, ram_d = 0, ram_wr = 0.
+// eeprom_scl/eeprom_sdai/eeprom_quirk glue, md_eeprom_cs/md_eeprom_data, the sram_* mux and cart_data mux are left as-is.
+// pier_eeprom (STM95XXX) is KEPT in this cook.
+assign eeprom_sdao    = 1'b1;
+assign eeprom_ram_a   = 15'h0;
+assign eeprom_ram_d   = 8'h00;
+assign eeprom_ram_we  = 1'b0;
 
 
 // PIER EEPROM
@@ -1078,8 +1048,8 @@ always @(posedge clk) begin
 			else if(cart_id[63:0] == "T-113016") noram_quirk  <= 1;        // Puggsy fake ram check
 			else if(cart_id[63:0] == "T-574023") pier_quirk   <= 1;        // Pier Solar Reprint
 			else if(cart_id[63:0] == "T-574013") pier_quirk   <= 1;        // Pier Solar 1st Edition
-			else if(cart_id[63:0] == "MK-1229 ") svp_quirk    <= 1;        // Virtua Racing EU/US
-			else if(cart_id[63:0] == "G-7001  ") svp_quirk    <= 1;        // Virtua Racing JP
+			// else if(cart_id[63:0] == "MK-1229 ") svp_quirk    <= 1;        // Virtua Racing EU/US (SVP stripped)
+			// else if(cart_id[63:0] == "G-7001  ") svp_quirk    <= 1;        // Virtua Racing JP (SVP stripped)
 			else if(cart_id[63:0] == "T-35036 ") fmbusy_quirk <= 1;        // Hellfire US
 			else if(cart_id[63:0] == "T-25073 ") fmbusy_quirk <= 1;        // Hellfire JP
 			else if(cart_id[63:0] == "MK-1137-") fmbusy_quirk <= 1;        // Hellfire EU

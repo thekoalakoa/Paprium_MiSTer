@@ -33,6 +33,7 @@ module md_board
 	input reset_button,
 	input ext_vres,
 	input ext_zres,
+	input fx_cart_loaded, // FXALIGN1P ITEM 1': FX68K-only power-on hold release (clk_sys sticky)
 	
 	// 68k/z80 ram
 	output [14:0] ram_68k_address,
@@ -132,8 +133,10 @@ module md_board
 	output dma_z80_ack,
 	output res_z80,
 	output vdp_dma_oe_early,
-	output vdp_dma
-	
+	output vdp_dma,
+	// INSTRUMENT B debug outs (observe-only)
+	output board_reset_n,
+	output board_halt_n
 	);
 	
 	wire [7:0] SD;
@@ -522,13 +525,23 @@ module md_board
 	assign ext_ZCLK_o = ZCLK;
 `endif
 	
+	// fx68k 0.2.2: USE_FX68K selects ijor/FX68K wrapper (PASS ALT1+VPA+dtack_d+asn_d)
+	`ifdef USE_FX68K
+	fx68k_m68kcpu_wrap m68k
+	`else
 	m68kcpu m68k
+	`endif
 		(
 		.MCLK(MCLK2),
+`ifdef USE_FX68K
+		.CART_LOADED(fx_cart_loaded), // FXALIGN1P ITEM 1'
+		.CLK(VCLK),
+`else
 `ifndef EXT_CLOCKS
 		.CLK(VCLK),
 `else
 		.CLK(ext_VCLK_i),
+`endif
 `endif
 		.BR(BR),
 		.BGACK(BGACK),
@@ -775,10 +788,12 @@ module md_board
 			(~z80_ZA_d & z80_ZA_o) |
 			((ym_ZA_d & z80_ZA_d) & ZA);
 	
+		// Spec-GO dig D one-var: ignore ext_dtack (drop cart_dtack gate); clean ym DTACK into wrap.
 		DTACK <= ~ym_DTACK_pull & ~ext_dtack;
 	
 		BGACK <= ~ym_BGACK_pull;
 	
+		// Stock BR (REVERTED from Spec-GO BR=1): ym bus-request OR dma_68k_req OSD pause.
 		BR <= ~ym_BR_pull & ~dma_68k_req;
 		
 		AS <= ym_AS_d & m68k_S_d ? 1'h1 :
@@ -810,7 +825,8 @@ module md_board
 	
 	assign RESET = ~(ym_RESET_pull | m68k_RESET_pull | ext_vres);
 	assign HALT = ~(ym_HALT_pull | m68k_HALT_pull | ext_vres);
-	
+	assign board_reset_n = RESET; // INSTRUMENT B debug
+	assign board_halt_n  = HALT;  // INSTRUMENT B debug
 	//assign PA =
 	//	(~ym_PA_d & ym_PA_o) | (ym_PA_d & 7'h7f);
 		

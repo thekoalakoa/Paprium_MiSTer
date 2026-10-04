@@ -23,7 +23,6 @@ module md_io
 	input        reset,
 
 	input        MODE,
-	input        SMS,
 	input  [1:0] MULTITAP,
 
 	input        P1_UP,
@@ -118,31 +117,9 @@ module md_io
 	input      [6:0] port2_dir
 );
 
+// FXMDIO1: fourway + teamplayer multitap removed. Outputs tied to the plain-pad (multitap-off) path.
 wire [6:0] port1_fw,port2_fw;
-fourway fourway
-(
-	.*,
-	.port1_out(port1_fw),
-	.port2_out(port2_fw)
-);
-
 wire [6:0] port1_tp,port2_tp;
-teamplayer teamplayer
-(
-	.*,
-	.PORT(MULTITAP[0]),
-	.port1_out(port1_tp),
-	.port2_out(port2_tp)
-);
-
-wire [6:0] port_ms;
-multitap_sms multitap_sms
-(
-	.*,
-	.port_out(port_ms),
-	.port_in(port1_in),
-	.port_dir(port1_dir)
-);
 
 wire [6:0] port1_pad;
 pad_io input1
@@ -151,7 +128,7 @@ pad_io input1
 	.reset(reset),
 
 	.MODE(MODE),
-	.SMS(SMS),
+	.SMS(1'b0), // FXSMS1
 
 	.P_UP(P1_UP),
 	.P_DOWN(P1_DOWN),
@@ -182,7 +159,7 @@ pad_io input2
 	.reset(reset),
 
 	.MODE(MODE),
-	.SMS(SMS),
+	.SMS(1'b0), // FXSMS1
 
 	.P_UP   (MULTITAP[1] ? P5_UP    : P2_UP    ),
 	.P_DOWN (MULTITAP[1] ? P5_DOWN  : P2_DOWN  ),
@@ -214,56 +191,16 @@ pad_io input2
 	.port_dir(port2_dir)
 );
 
-pad_io jcart_l
-(
-	.clk(clk),
-	.reset(reset),
+// FXMDIO1: multitap idle values = standard 3/6-button pad path (identical to MULTITAP=0)
+assign port1_fw = port1_pad;
+assign port2_fw = port2_pad;
+assign port1_tp = port1_pad;
+assign port2_tp = port2_pad;
 
-	.MODE(MODE),
-
-	.P_UP(P3_UP),
-	.P_DOWN(P3_DOWN),
-	.P_LEFT(P3_LEFT),
-	.P_RIGHT(P3_RIGHT),
-	.P_A(P3_A),
-	.P_B(P3_B),
-	.P_C(P3_C),
-	.P_START(P3_START),
-	.P_MODE(P3_MODE),
-	.P_X(P3_X),
-	.P_Y(P3_Y),
-	.P_Z(P3_Z),
-
-	.port_in({jcart_th,6'd0}),
-	.port_dir(7'b0111111),
-	.port_out(jcart_data[6:0])
-);
-
-pad_io jcart_u
-(
-	.clk(clk),
-	.reset(reset),
-
-	.MODE(MODE),
-
-	.P_UP(P4_UP),
-	.P_DOWN(P4_DOWN),
-	.P_LEFT(P4_LEFT),
-	.P_RIGHT(P4_RIGHT),
-	.P_A(P4_A),
-	.P_B(P4_B),
-	.P_C(P4_C),
-	.P_START(P4_START),
-	.P_MODE(P4_MODE),
-	.P_X(P4_X),
-	.P_Y(P4_Y),
-	.P_Z(P4_Z),
-
-	.port_in({jcart_th,6'd0}),
-	.port_dir(7'b0111111),
-	.port_out(jcart_data[14:8])
-);
-
+// FXMDIO1: jcart_l / jcart_u removed. jcart_data idle = pad_io 3-button released frame with TH=jcart_th (TH=1: 111111, TH=0: 110011), bits 7/15 = 0
+wire [6:0] jcart_idle = {jcart_th, 2'b11, {2{jcart_th}}, 2'b11};
+assign jcart_data[6:0]  = jcart_idle;
+assign jcart_data[14:8] = jcart_idle;
 assign jcart_data[7]  = 0;
 assign jcart_data[15] = 0;
 
@@ -279,22 +216,14 @@ always @(posedge clk) begin
 	case(MULTITAP)
 		0: {port2_sel,port1_sel} <= {port2_pad, port1_pad};
 		1: {port2_sel,port1_sel} <= {port2_fw,  port1_fw };
-		2: {port2_sel,port1_sel} <= {port2_pad, SMS ? port_ms : port1_tp};
+		2: {port2_sel,port1_sel} <= {port2_pad, port1_tp};
 		3: {port2_sel,port1_sel} <= {port2_tp,  port1_pad};
 	endcase
 end
 
-saturn_keyboard saturn_keyboard_inst (
-	.clk       (clk),
-	.reset     (reset),
-	.enable    (kbd_en),
-	.ps2_key   (PS2_KEY),
-	.ps2_led   (ps2_led_kbd),
-	.port_o    (kbd_p2_en ? port2_in  : port1_in ),
-	.port_d    (kbd_p2_en ? port2_dir : port1_dir),
-	.port_i_in (kbd_p2_en ? port2_sel : port1_sel),
-	.port_i_out(port_kbd_out)
-);
+// FXMDIO1: saturn_keyboard removed. Outputs tied to idle: pass-through when disabled, LEDs off
+assign port_kbd_out = kbd_p2_en ? port2_sel : port1_sel;
+assign ps2_led_kbd  = 3'b000;
 
 assign PS2_LED = kbd_en ? ps2_led_kbd : 3'b000;
 

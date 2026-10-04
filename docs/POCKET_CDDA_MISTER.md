@@ -4,6 +4,7 @@
 **Date:** 2026-09-08 (America/New_York)  
 **Goal correction (the maintainer):** music and behavior must match **paprium-pocket `0.2.1`**, including **`paprium.pcm` (PPAD IMA ADPCM)** — **not** Pezz MD+ WAV+`.cue`.  
 **Shell:** Pezz MiSTer only (`sys/`, Quartus, DE10).  
+**Region:** JP-only lock — OSD Region/Auto/Priority stripped; `PAL=1'b0` / `JAP=1'b1` hardwired like Pocket NTSC-J.  
 **Pins:**
 
 | Tree | Ref | Tip / note |
@@ -333,6 +334,11 @@ scripts/build_mcu.sh
 ### 6.2b Also added (Quartus Lite 21.1)
 
 `sys/pll_q21.qip` — copy of `pll_q17.qip` so `sys.qip`’s versioned `pll_q*.qip` include resolves under Quartus **21.1** Lite.
+
+**M10K reclaim:** `CDDA_CHUNKS=2` (half IMA ring) + `ENABLE_MDP_AUDIO=0` generate-gate so Pezz `mdp_audio` M10K FIFO is not synthesized.
+- ascal M10K diet (`sys/sys_top.v`): `.OHRES(2048)` (was 2304), `.MASK(8'h07)` (Nearest|Bilinear|SharpBilinear only; Bicubic/Polyphase off), `.ADAPTIVE("false")`, `.DOWNSCALE("false")` to drop downscale `i_mem` line buffer.
+
+- SVP QIP removed + unused OSD (cheats/gun/mouse/keyboard/multitap/SNAC/SMS) stripped for Paprium-only.
 
 ### 6.3 Edit (MiSTer shell)
 
