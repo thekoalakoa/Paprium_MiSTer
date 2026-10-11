@@ -94,7 +94,7 @@ module cartridge
 	output signed [15:0] paprium_sfx_l,
 	output signed [15:0] paprium_sfx_r,
 
-	// MCU port-2 (flash/workspace) write taps for the DDR diag
+	// MCU port-2 (flash/workspace) write taps (debug outputs)
 	output     [24:1] dbg_mcu_mem_addr,
 	output     [15:0] dbg_mcu_mem_din,
 	output            dbg_mcu_mem_wrl,
@@ -623,7 +623,7 @@ wire [12:0] eeprom_mask[8] = '{13'h00, 13'h7f, 13'h7f, 13'hff, 13'h7ff, 13'h1fff
 // FXMAPPER1B: EPPROM_24CXX e24cxx removed (non-Paprium X24C01..24C65 EEPROM cores). Outputs tied to idle:
 //   sda_o = 1 (module's IDLE/released-bus level), ram_addr = 0, ram_d = 0, ram_wr = 0.
 // eeprom_scl/eeprom_sdai/eeprom_quirk glue, md_eeprom_cs/md_eeprom_data, the sram_* mux and cart_data mux are left as-is.
-// pier_eeprom (STM95XXX) is KEPT in this cook.
+// pier_eeprom (STM95XXX) is kept in this build.
 assign eeprom_sdao    = 1'b1;
 assign eeprom_ram_a   = 15'h0;
 assign eeprom_ram_d   = 8'h00;
