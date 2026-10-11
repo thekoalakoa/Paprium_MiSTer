@@ -1,99 +1,100 @@
 # Paprium_MiSTer
 
-A **MiSTer** FPGA core for **Paprium** (WaterMelon, Mega Drive / Genesis). It is a Mega Drive core with Paprium cartridge support added (Paprium MCU behaviour). Background music is read from a `paprium.pcm` file that you supply.
+A standalone **MiSTer FPGA** core for **Paprium** (WaterMelon, Mega Drive / Genesis), ported from the Analogue Pocket Paprium core ([paprium-pocket](https://github.com/thekoalakoa/paprium-pocket)). It is a Mega Drive core with the Paprium cartridge hardware added: the cartridge MCU, its sound effects, and background music streamed from a `paprium.pcm` file that you supply.
 
-You need your own Paprium ROM dump and your own `paprium.pcm`. Neither is included in this repository or in the release, and none are linked here.
+This is an EverDrive Pro style implementation, not a faithful reproduction of the original cartridge chipset.
 
-## Status
+**No ROM or music is included** in this repository or in the release, and none are linked here.
 
-- Hardware-verified.
-- A 30+ minute soak is still open.
-- Download: Paprium.rbf and Paprium.mgl are attached to the [paprium-20261003 release](https://github.com/thekoalakoa/Paprium_MiSTer/releases/tag/paprium-20261003) on the GitHub Releases page of this repository.
-- Release rbf: md5 `2b1befb0aefb720aa8a0eaa9cf4e21e9`, 3,823,828 bytes, compiled with Quartus Prime Lite 21.1.1, seed 1 (as set in `MegaDrive.qsf`).
+## Current release
 
-### Build numbers
+[`paprium-20261003`](https://github.com/thekoalakoa/Paprium_MiSTer/releases/tag/paprium-20261003): `Paprium.rbf` and `Paprium.mgl`, hardware-verified on MiSTer.
 
-| Item | Value |
-|---|---|
-| ALM | 25,733 / 41,910 |
-| M10K | 339 / 553 |
-| DSP | 61 / 112 |
-| clk_107m setup | WNS -0.761 |
-| clk_53m setup | WNS -0.117 |
-| Hold (minimum) | -0.116 by corner scan |
+## Requirements
 
-This build has a **timing exception** on clk_107m and clk_53m (negative setup slack) and a negative hold slack in the corner scan. It was verified on hardware, but it does not meet timing.
+- A MiSTer (DE10-Nano) with an up-to-date MiSTer main binary.
+- Your own Paprium ROM dump, named `Paprium.md`.
+- Your own Paprium music file, named `paprium.pcm`.
 
 ## Installing
 
-1. Download `Paprium.rbf` and `Paprium.mgl` from the [Releases page](https://github.com/thekoalakoa/Paprium_MiSTer/releases) of this repository (release `paprium-20261003`) and put both in `_Console` on the MiSTer SD card.
-2. Copy your own ROM dump (named `Paprium.md`) and your own music file (named `paprium.pcm`) into `games/Paprium/Paprium`.
+1. Download `Paprium.rbf` and `Paprium.mgl` from the [release](https://github.com/thekoalakoa/Paprium_MiSTer/releases/tag/paprium-20261003) and put both in `_Console` on the SD card.
+2. Put your `Paprium.md` and `paprium.pcm` in `games/Paprium/Paprium`.
+3. Launch `Paprium.mgl`. It starts the core, loads the ROM and mounts the music file.
 
-Resulting layout on the SD card:
-
-```
-_Console/Paprium.rbf                          (the core, from the release)
-_Console/Paprium.mgl                          (launcher, from the release; same file as releases/Paprium.mgl)
-games/Paprium/Paprium/Paprium.md              (your ROM dump)
-games/Paprium/Paprium/paprium.pcm             (your music file)
-```
-
-`releases/Paprium.mgl` is the launcher. It loads `_Console/Paprium` and mounts the two files at these paths:
+SD card layout:
 
 ```
-/media/fat/games/Paprium/Paprium/paprium.pcm   (mounted as the music file)
-/media/fat/games/Paprium/Paprium/Paprium.md    (loaded as the ROM)
+_Console/Paprium.rbf
+_Console/Paprium.mgl
+games/Paprium/Paprium/Paprium.md
+games/Paprium/Paprium/paprium.pcm
 ```
 
-Start the game by launching `Paprium.mgl`.
+The launcher (`releases/Paprium.mgl`) expects exactly these paths:
 
-## OSD
+```
+/media/fat/games/Paprium/Paprium/Paprium.md    (ROM)
+/media/fat/games/Paprium/Paprium/paprium.pcm   (music)
+```
 
-The OSD of the shipped core contains exactly these items:
+## OSD guide
 
-- **Load \*.BINGENMD** - load a ROM.
-- **Load \*.PCM** - load a music file.
-- **TMSS** - Disabled / Enabled.
-- **Paprium Arcade Mode** - Locked / Unlocked.
-- **Paprium Arcade Stage** - Off, then a list of stages.
+- **Load \*.BINGENMD**: load a ROM by hand.
+- **Load \*.PCM**: load a music file by hand.
+- **TMSS**: Disabled / Enabled.
+- **Paprium Arcade Mode**: Locked / Unlocked (based on adroxe's Paprium-Arcade unlock).
+- **Paprium Arcade Stage**: Off, or a starting stage.
 - **Audio & Video** page: Aspect Ratio, Scandoubler Fx, Vertical Crop, Crop Offset, Scale, 320x224 Aspect, Border, Composite Blend, CRAM Dots, Audio Filter, FM Chip, Stereo Mix.
 - **Input** page: Swap Joysticks, 6 Buttons Mode.
-- **Pause When OSD is Open** - No / Yes.
-- **Mount music \*.PCM** - mount the `paprium.pcm` music file.
-- **Reset** (Reset core).
+- **Pause When OSD is Open**: No / Yes.
+- **Mount music \*.PCM**: mount `paprium.pcm`.
+- **Reset**: reset the core.
 
-The OSD also shows a Music PCM info message: mounted, invalid, ejected or buffer underrun.
+An info line reports the music file state: mounted, invalid, ejected or buffer underrun.
 
-There is no Hard Reset item, no Load Backup RAM / Save Backup RAM item and no Autosave item. Progress saves automatically when the OSD is opened.
+Progress saves automatically when the OSD is opened. There is no Hard Reset, Load/Save Backup RAM or Autosave item.
 
-## Building from source (optional)
+## Known issues
 
-The release files above are all you need to play. To build the rbf yourself, the project is a standard Quartus project.
+- A first launch with no save file starts at the mini-game.
+- Some Audio & Video options (for example Aspect Ratio, Scandoubler Fx, Audio Filter, FM Chip, Stereo Mix) may have little or no visible effect, or may disturb video sync. Fixes are planned.
+- The build is hardware-verified but does not fully meet Quartus timing. Long-session testing is still ongoing.
 
-1. Install Quartus Prime Lite 21.1.1 (the shipped build used this version). The device is Cyclone V `5CSEBA6U23I7`, top-level entity `sys_top`, revision `MegaDrive`, as set in `MegaDrive.qsf`.
-2. Open `MegaDrive.qpf` and run a full compilation, or from the repository root run:
+## Building from source
 
-   ```
-   quartus_sh --flow compile MegaDrive
-   ```
+The release files are all you need to play. To build the core yourself:
 
-3. The bitstream is written to `output_files/MegaDrive.rbf` (`GENERATE_RBF_FILE` is on in `MegaDrive.qsf`). Rename it to `Paprium.rbf` to use it in `_Console`.
+1. Install Quartus Prime Lite 21.1.1. The device is Cyclone V `5CSEBA6U23I7`, revision `MegaDrive`.
+2. Open `MegaDrive.qpf` and run a full compilation, or run `quartus_sh --flow compile MegaDrive` from the repository root.
+3. The bitstream is written to `output_files/MegaDrive.rbf`. Rename it to `Paprium.rbf` for `_Console`.
 
-Notes:
+The cartridge MCU firmware is stored pre-built in `rtl/PAPRIUM/mcu.txt`. It is krikzz's [mega-ppm](https://github.com/krikzz/mega-ppm) firmware with the changes in `patches/mega-ppm-pocket.patch`; see `patches/README.md` and `scripts/build_mcu.sh` to rebuild it. `clean.bat` removes Quartus build output.
 
-- `build_id.v` (the build date shown in the OSD version line) is generated at the start of every compile by `sys/build_id.tcl` and is not stored in the repository.
-- The MCU firmware is stored pre-built in `rtl/PAPRIUM/mcu.txt`. The changes made to the upstream firmware are in `patches/mega-ppm-pocket.patch`, with instructions in `patches/README.md` and `scripts/build_mcu.sh`.
-- `clean.bat` removes Quartus build output.
+## Credits
 
-## Credits and licence
+- [Nuked-MD-FPGA](https://github.com/nukeykt/Nuked-MD-FPGA) by nukeykt: the Mega Drive core (`rtl/nuked-md/`).
+- [MegaDrive_MiSTer](https://github.com/MiSTer-devel/MegaDrive_MiSTer) and the MiSTer framework (`sys/`) by Sorgelig (Alexey Melnikov) and the MiSTer contributors.
+- [FX68K](https://github.com/ijor/fx68k) by Jorge Cwik: the 68000 CPU core (`rtl/fx68k/`).
+- [NEORV32](https://github.com/stnolting/neorv32) by Stephan Nolting: the RISC-V soft CPU that runs the cartridge MCU firmware (`rtl/PAPRIUM/risc-v/`).
+- [mega-ppm](https://github.com/krikzz/mega-ppm) by krikzz: the Paprium cartridge MCU firmware and cartridge logic, and the first-level door fix.
+- [Paprium_MegaDrive_MiSTer](https://github.com/MisterPezz82/Paprium_MegaDrive_MiSTer) by MisterPezz82: the original MiSTer Paprium port this core started from.
+- [Paprium-Arcade](https://github.com/adroxe/Paprium-Arcade) by adroxe: the Arcade Mode unlock.
+- VM2413 by Mitsutaka Okazaki (`rtl/VM2413/`).
+- Project Little Man, TheHpman (MAME Paprium research), MAVProxyUser (Genesis Plus GX Paprium work), and the Paprium preservation community.
 
-All of this comes from files already in this repository.
+## Licence
 
-- Lineage (as recorded in this repository's earlier README and fork notes): [Nuked-MD-FPGA](https://github.com/nukeykt/Nuked-MD-FPGA), [MegaDrive_MiSTer](https://github.com/MiSTer-devel/MegaDrive_MiSTer), drizzt openFPGA-MegaDrive, [Paprium_MegaDrive_MiSTer](https://github.com/MisterPezz82/Paprium_MegaDrive_MiSTer), [paprium-pocket](https://github.com/thekoalakoa/paprium-pocket) and [mega-ppm](https://github.com/krikzz/mega-ppm).
-- `docs/PEZZ_UPSTREAM_README.md` lists these as prior work: Krikzz / mega-ppm, adroxe / Paprium-Arcade (the Arcade Mode unlock IPS), Project Little Man, TheHpman / MAME Paprium research, MAVProxyUser / Genesis Plus GX Paprium PR, and the Paprium preservation community.
-- `MegaDrive.sv` carries the header "Copyright (c) 2023 Alexey Melnikov" under the GNU General Public License, version 2 or (at your option) any later version.
-- `rtl/fx68k` includes FX68K, "Copyright (c) 2018 by Jorge Cwik" (`rtl/fx68k/README.md`); its `LICENSE` is the GNU General Public License version 3.
-- `rtl/nuked-md/LICENSE` is the GNU General Public License version 2.
-- The earlier README's licence line read: "GPLv3 - see upstream projects."
+Each component keeps its own licence, as given in its file headers and licence files:
 
-No ROM or music file is part of this repository or of the release.
+- Nuked-MD-FPGA (`rtl/nuked-md/`): GPL-2.0-or-later (`rtl/nuked-md/LICENSE`).
+- MiSTer core files (`MegaDrive.sv`, `rtl/cartridge.sv`, `rtl/md_io.sv`): GPL-2.0-or-later. `rtl/sdram.sv`: GPL-3.0-or-later.
+- MiSTer framework (`sys/`): GPL, per file header (for example `sys/sys_top.v` GPL-2.0-or-later, `sys/hps_io.sv` and `sys/scandoubler.v` GPL-3.0-or-later).
+- FX68K (`rtl/fx68k/`): GPL-3.0 (`rtl/fx68k/LICENSE`).
+- NEORV32 (`rtl/PAPRIUM/risc-v/`): BSD-3-Clause (`rtl/PAPRIUM/risc-v/LICENSE`).
+- mega-ppm-derived cartridge files and firmware (`rtl/PAPRIUM/audio_sfx.sv`, `fpgio.sv`, `mcu_core.sv`, `memory.sv`, `ramdp_io.sv`, `structs.sv`, `mcu.txt`, and the code changed by `patches/mega-ppm-pocket.patch`): BSD-3-Clause, Copyright (c) 2025, krikzz.
+- VM2413 (`rtl/VM2413/`): its own licence in the file headers, which includes a non-commercial clause.
+
+A single licence file for the project as a whole is still to be added.
+
+Paprium is a trademark of its owners. This project is not affiliated with WaterMelon.
