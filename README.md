@@ -85,16 +85,15 @@ The cartridge MCU firmware is stored pre-built in `rtl/PAPRIUM/mcu.txt`. It is k
 
 ## Licence
 
-Each component keeps its own licence, as given in its file headers and licence files:
+Paprium_MiSTer as a whole is licensed under the **GNU General Public License, version 3 or (at your option) any later version** (GPL-3.0-or-later). See [`LICENSE`](LICENSE), which also lists the third-party components:
 
 - Nuked-MD-FPGA (`rtl/nuked-md/`): GPL-2.0-or-later (`rtl/nuked-md/LICENSE`).
+- FX68K (`rtl/fx68k/`): GPL version 3 (`rtl/fx68k/LICENSE`).
 - MiSTer core files (`MegaDrive.sv`, `rtl/cartridge.sv`, `rtl/md_io.sv`): GPL-2.0-or-later. `rtl/sdram.sv`: GPL-3.0-or-later.
 - MiSTer framework (`sys/`): GPL, per file header (for example `sys/sys_top.v` GPL-2.0-or-later, `sys/hps_io.sv` and `sys/scandoubler.v` GPL-3.0-or-later).
-- FX68K (`rtl/fx68k/`): GPL-3.0 (`rtl/fx68k/LICENSE`).
-- NEORV32 (`rtl/PAPRIUM/risc-v/`): BSD-3-Clause (`rtl/PAPRIUM/risc-v/LICENSE`).
+- NEORV32 (`rtl/PAPRIUM/risc-v/`): BSD-3-Clause, Copyright (c) 2020, Stephan Nolting (`rtl/PAPRIUM/risc-v/LICENSE`).
 - mega-ppm-derived cartridge files and firmware (`rtl/PAPRIUM/audio_sfx.sv`, `fpgio.sv`, `mcu_core.sv`, `memory.sv`, `ramdp_io.sv`, `structs.sv`, `mcu.txt`, and the code changed by `patches/mega-ppm-pocket.patch`): BSD-3-Clause, Copyright (c) 2025, krikzz.
-- VM2413 (`rtl/VM2413/`): its own licence in the file headers, which includes a non-commercial clause.
 
-A single licence file for the project as a whole is still to be added.
+**Exception:** VM2413 (`rtl/VM2413/`), Copyright (c) 2006 Mitsutaka Okazaki, is distributed under its own original terms, not under the GPL. Those terms include a non-commercial clause; the licence text is kept in the headers of its files.
 
 Paprium is a trademark of its owners. This project is not affiliated with WaterMelon.
