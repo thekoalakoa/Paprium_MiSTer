@@ -705,7 +705,7 @@ Third-party components keep their own notices and licence files:
 - mega-ppm (https://github.com/krikzz/mega-ppm), Copyright (c) 2025, krikzz:
   BSD-3-Clause. Covers the mega-ppm-derived cartridge files in rtl/PAPRIUM/
   (audio_sfx.sv, fpgio.sv, mcu_core.sv, memory.sv, ramdp_io.sv, structs.sv),
-  the MCU firmware image rtl/PAPRIUM/mcu.txt, and the firmware code modified
+  the MCU firmware init files built by scripts/build_mcu.sh, and the firmware code modified
   by patches/mega-ppm-pocket.patch. Its licence text follows:
 
     BSD 3-Clause License

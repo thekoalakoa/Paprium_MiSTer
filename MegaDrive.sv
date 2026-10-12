@@ -83,8 +83,9 @@ localparam CONF_STR = {
 	
 	"-;",
 	"-;",
-	"O[59],Paprium Arcade Mode,Locked,Unlocked;",
-	"O[68:64],Paprium Arcade Stage,Off,Block 888,Intercom,MTS,Bion Mart,Roof-Top,Police HQ,Ice Factory,Reformatory,Sanophix PU,Central Park,Green Cross,The Docks,Golden Of Seas,Deep Storage,Aquaworld,Blue Bar,Powder-Zone,Bohpal B-2,Juvanium,Sky Spa,Digniti KTV,The Vault,Sanophix Labs,The Solarium,Arena;",
+	"P3,SCUM! (Needs Reset);",
+	// 0.2.6: the old Console Model (O[81:79]) and MegaWire (O[74]) rows moved into the SCUM! page below as
+	// the Pocket core's 0.2.6 menu (Console O[85:82], Mega CD O[89:86], MegaWire O[90]). Bits 70-75 and 79-81 are retired.
 	"-;",
 
 	"P1,Audio & Video;",
@@ -103,10 +104,27 @@ localparam CONF_STR = {
 	"P1O[11],FM Chip,YM2612,YM3438;",
 	"P1O[58:57],Stereo Mix,None,25%,50%,100%;",
 
-	"P2,Input;",
-	"P2-;",
-	"P2O[4],Swap Joysticks,No,Yes;",
-	"P2O[5],6 Buttons Mode,No,Yes;",
+	// SCUM! (P3) + Grand Stick Options (P2) + Little-Man (P4). Bits: 4 Swap, 5 6-button, 59 arcade, 68:64 stage, 69 32X stub, 76/77/78 cheats.
+	// 0.2.6: 85:82 Console (8 entries, value = the Pocket core's console 0-7; bit 85 is
+	// reserved and always 0 from this menu), 89:86 Mega CD (9 entries in the Pocket core's order; MegaDrive.sv maps the entry to
+	// the unit number), 90 MegaWire. Picking a recognised unit turns the CPU MATE buddy on; None / Unknown CD = no buddy.
+	// Retired: 70 Mega CD Mode, 73:71 Mega CD Model, 74 old MegaWire, 75, 81:79 Console Model (all 0 in a new CFG).
+	// All are read by the game at boot ($BC944): reset after a change.
+	// Layout: SCUM! page = Grand Stick Options > (P2 sub-page), Console, CD Model, 32X Mode, MegaWire4.0,
+	// Little-Man > (P4 sub-page). Labels/order only; every bit below is unchanged.
+	"P3P2,Grand Stick Options;",
+	"P2O[5],6-Button Mode,Off,On;",
+	"P2O[4],Swap Joysticks,Off,On;",
+	"P2O[59],Arcade Mode,Off,On;",
+	"P2O[68:64],Arcade Stage,Off,Block 888,Intercom,MTS,Bion Mart,Roof-Top,Police HQ,Ice Factory,Reformatory,Sanophix PU,Central Park,Green Cross,The Docks,Golden Of Seas,Deep Storage,Aquaworld,Blue Bar,Powder-Zone,Bohpal B-2,Juvanium,Sky Spa,Digniti KTV,The Vault,Sanophix Labs,The Solarium,Arena;",
+	"P3O[85:82],Console,Mega Drive,Genesis,Mega Drive 2,Genesis Model 2,Genesis 3,Nomad,Mega Jet,Unknown;",
+	"P3O[89:86],CD Model,None,Mega-CD / Sega CD,Mega-CD 2 / Sega CD 2,Wondermega,Wondermega M2 / X'Eye,LaserActive,Aiwa CSD-GM1,CDX,Unknown CD;",
+	"P3O[69],32X Mode,Off,On;",
+	"P3O[90],MegaWire4.0,Off,On;",
+	"P3P4,Little-Man;",
+	"P4O[76],Infinite Life,Off,On;",
+	"P4O[77],Infinite Pills,Off,On;",
+	"P4O[78],Infinite Lives,Off,On;",
 
 	"-;",
 	"O[61],Pause When OSD is Open,No,Yes;",
@@ -415,8 +433,10 @@ end
 ///////////////////////////////////////////////////
 
 // JP-only like Pocket NTSC-J: OSD Region/Auto/Priority stripped; menu JP was O[7:6]=00
+// 0.2.6: the region now comes from the Console list, or from a combined Mega CD unit
+// (paprium_opts below). The default (Mega Drive, Mega CD None) is Japan, as before. PAL stays 0 (NTSC only).
 wire        PAL = 1'b0;
-wire        JAP = 1'b1;
+wire        JAP;
 
 wire [23:1] cart_addr;
 wire        cart_cs, cart_oe_raw, cart_oe_early, cart_lwr, cart_uwr, cart_time, cart_dma;
@@ -473,9 +493,245 @@ wire        cart_oe = paprium_active ? cart_oe_raw : cart_oe_early;
 
 
 // Muxed cart signals: MD+ overlay takes priority when active
-wire [15:0] cart_data    = mdp_data_en ? mdp_data_out : cart_data_rom;
-wire        cart_data_en = mdp_data_en | cart_data_en_rom;
-wire        cart_dtack   = mdp_dtack   | cart_dtack_rom;
+// ---- 0.2.6: 32X / Mega CD detection stubs + the hook-free CPU MATE buddy ----
+// paprium_addons: 32X "MARS" (status[69]) and the Mega CD
+// stub (0.2.6: the Mega CD unit list; was status[70] + model [73:71]), on clk_md like the Pocket (md_board's MCLK2). paprium_mcd_link (clk_md):
+// post detector, 12.5 MHz not-before timer, honest busy / COMSTAT2 ($A12024). paprium_snoop (clk_sys): Word RAM /
+// PRG-RAM / $FF9920 writes into the compact window paprium_xwin (MiSTer equivalent of the Pocket SRAM, clk_sys).
+// paprium_xlink (clk_sys): the MCU's register block 0x0A000000. All gated by paprium_active; with Mega CD None
+// the stub answers nothing, the link sees no post and the snoop takes nothing.
+wire        addon_data_en;
+wire [15:0] addon_data;
+wire        od_busy;
+wire [15:0] od_comstat2;
+wire  [7:0] od_g3;
+wire  [6:0] od_link_status;
+
+// ---- 0.2.6: console and Mega CD options. paprium_opts decodes Console
+// status[84:82] (bit 85 reserved, always 0 from the menu) and Mega CD status[89:86] (menu entry -> unit number, in the
+// Pocket menu order) on clk_sys, where status lives, and applies the hardware rules (region per console / combined unit,
+// version nibble + TMSS-lite, $1FE4 model bits, no separate CD on a console without expansion port, DISK). The clk_md
+// results go through synch_3 like the Pocket core's opt_md_sync; the MCU (clk_sys) takes {MegaWire, model} straight from the flops.
+// All are static settings the game reads at boot: change them, then Reset.
+reg  [3:0] opt_megacd;
+always @(*) begin
+	case (status[89:86])                // OSD entry -> unit (paprium_addons table)
+		4'd1:    opt_megacd = 4'd2;      // Mega-CD / Sega CD
+		4'd2:    opt_megacd = 4'd3;      // Mega-CD 2 / Sega CD 2
+		4'd3:    opt_megacd = 4'd4;      // Wondermega
+		4'd4:    opt_megacd = 4'd5;      // Wondermega M2 / X'Eye
+		4'd5:    opt_megacd = 4'd6;      // LaserActive
+		4'd6:    opt_megacd = 4'd1;      // Aiwa CSD-GM1 (= the old Mega CD Mode stub)
+		4'd7:    opt_megacd = 4'd7;      // CDX
+		4'd8:    opt_megacd = 4'd8;      // Unknown CD
+		default: opt_megacd = 4'd0;      // None
+	endcase
+end
+
+wire       opt_jap, opt_ver1, opt_disk_n, opt_cd_real;
+wire [3:0] opt_model, opt_cd_unit;
+paprium_opts opts
+(
+	.clk    (clk_sys),
+	.console(status[84:82]),
+	.megacd (opt_megacd),
+	.jap    (opt_jap),
+	.ver1   (opt_ver1),
+	.model  (opt_model),
+	.cd_unit(opt_cd_unit),
+	.disk_n (opt_disk_n),
+	.cd_real(opt_cd_real)
+);
+
+wire       opt_jap_s, opt_ver1_s, opt_disk_n_s, opt_cd_real_s;
+wire [3:0] opt_cd_unit_s;
+synch_3 #(.WIDTH(8)) opt_md_sync
+(
+	.i({opt_jap, opt_ver1, opt_disk_n, opt_cd_real, opt_cd_unit}),
+	.o({opt_jap_s, opt_ver1_s, opt_disk_n_s, opt_cd_real_s, opt_cd_unit_s}),
+	.clk(clk_md)
+);
+assign JAP = opt_jap_s;
+
+// buddy enable = a recognised Mega CD unit
+wire        cd_mode_on = paprium_active & opt_cd_real_s;
+// TMSS-lite: a version-1 console, unless the real TMSS (OSD TMSS + BIOS) is in, which answers those registers itself
+wire        tmss_lite_on;                 // assigned after the tmss_enable/tmss_loaded flops (below)
+wire        addon_dtack;
+
+paprium_addons addons
+(
+	.clk         (clk_md),
+	.reset       (s_reset),
+	.active      (paprium_active),
+	.tmss_reset  (md_reset_effective),   // md_board's ext_reset (SRES) clears the TMSS latch
+	.en_32x      (status[69]),
+	.cd_unit     (opt_cd_unit_s),
+	.tmss_on     (tmss_lite_on),
+	.cart_addr   (cart_addr),
+	.cart_oe     (cart_oe),
+	.cart_lwr    (cart_lwr),
+	.cart_uwr    (cart_uwr),
+	.cart_data_wr(cart_data_wr),
+	.busy        (od_busy),
+	.comstat2    (od_comstat2),
+	.g3_q        (od_g3),
+	.data_en     (addon_data_en),
+	.data_out    (addon_data),
+	.dtack       (addon_dtack)
+);
+
+// MCU external bus (cartridge -> paprium_cart, clk_sys)
+wire        xb_req;
+wire  [1:0] xb_region;
+wire [23:0] xb_addr;
+wire  [3:0] xb_sel;
+wire        xb_wr;
+wire [31:0] xb_wdata;
+wire [31:0] xb_rdata;
+wire        xb_ack;
+
+wire        xs_ack, xl_ack;
+wire [31:0] xs_rdata, xl_rdata;
+assign xb_ack   = (xb_region == 2'd0) ? xs_ack   : (xb_region == 2'd2) ? xl_ack   : 1'b1;            // 1 = no CRAM on MiSTer
+assign xb_rdata = (xb_region == 2'd0) ? xs_rdata : (xb_region == 2'd2) ? xl_rdata : 32'hFFFFFFFF;
+
+wire [23:0] xl_d_word, xl_d_busy;
+wire [15:0] xl_pend;
+wire        xl_arm_tg, xl_od_en;
+wire  [3:0] xl_clr_tg;
+wire  [7:0] xl_hold;
+wire  [3:0] od_flags;
+wire        od_armed, od_sres, od_sbrq;
+wire  [7:0] od_late;
+wire [15:0] od_posts;
+wire [23:0] od_tick;
+wire        od_en_mirror, od_en_prg;
+
+// option-D state resets with the cartridge (s_reset = the clk_md source of sys_reset), not with md_reset
+paprium_mcd_link mcd_link
+(
+	.clk         (clk_md),
+	.reset       (s_reset),
+	.en_cd       (cd_mode_on),
+	.cart_addr   (cart_addr),
+	.cart_lwr    (cart_lwr),
+	.cart_data_wr(cart_data_wr),
+	.g3_q        (od_g3),
+	.d_word      (xl_d_word),
+	.d_busy      (xl_d_busy),
+	.pend        (xl_pend),
+	.arm_tg      (xl_arm_tg),
+	.clr_tg      (xl_clr_tg),
+	.od_en       (xl_od_en),
+	.hold        (xl_hold),
+	.busy        (od_busy),
+	.comstat2    (od_comstat2),
+	.flags       (od_flags),
+	.armed       (od_armed),
+	.sres_run    (od_sres),
+	.sbrq        (od_sbrq),
+	.late_count  (od_late),
+	.post_count  (od_posts),
+	.tick        (od_tick),
+	.en_mirror   (od_en_mirror),
+	.en_prg      (od_en_prg)
+);
+
+// window / snoop / xlink: power-on reset only (PLL lock), as the Pocket's xmem block
+reg  [2:0] xmem_lock_s = 3'b000;
+reg        xmem_ever = 1'b0;
+always @(posedge clk_sys) begin
+	xmem_lock_s <= {xmem_lock_s[1:0], pll_locked};
+	if (xmem_lock_s[2]) xmem_ever <= 1'b1;
+end
+wire xmem_reset = ~xmem_ever;
+
+wire  [1:0] sn_en_s;
+synch_3 #(.WIDTH(2)) sn_en_sync (.i({od_en_prg, od_en_mirror}), .o(sn_en_s), .clk(clk_sys));
+
+wire        sn_valid, sn_take;
+wire [16:0] sn_waddr;
+wire [15:0] sn_data;
+wire  [1:0] sn_be;
+wire [15:0] sn_ovf, sn_prg;
+wire [31:0] xs_sn_words;
+
+paprium_snoop snoop
+(
+	.clk         (clk_sys),
+	.reset       (xmem_reset),
+	.en_mirror   (sn_en_s[0]),
+	.en_prg      (sn_en_s[1]),
+	.cart_addr   (cart_addr),
+	.cart_lwr    (cart_lwr),
+	.cart_uwr    (cart_uwr),
+	.cart_data_wr(cart_data_wr),
+	.sn_valid    (sn_valid),
+	.sn_waddr    (sn_waddr),
+	.sn_data     (sn_data),
+	.sn_be       (sn_be),
+	.sn_take     (sn_take),
+	.stat_prg    (sn_prg),
+	.stat_overflow(sn_ovf)
+);
+
+paprium_xwin xwin
+(
+	.clk     (clk_sys),
+	.reset   (xmem_reset),
+	.sn_valid(sn_valid),
+	.sn_waddr(sn_waddr),
+	.sn_data (sn_data),
+	.sn_be   (sn_be),
+	.sn_take (sn_take),
+	.mc_req  (xb_req & (xb_region == 2'd0)),
+	.mc_addr (xb_addr[17:0]),
+	.mc_sel  (xb_sel),
+	.mc_wr   (xb_wr),
+	.mc_wdata(xb_wdata),
+	.mc_rdata(xs_rdata),
+	.mc_ack  (xs_ack),
+	.stat_snoop_writes(xs_sn_words)
+);
+
+paprium_xlink #(.STAGE2(1'b1)) xlink
+(
+	.clk  (clk_sys),
+	.reset(xmem_reset),
+	.od_reset(sys_reset),
+	.req  (xb_req & (xb_region == 2'd2)),
+	.addr (xb_addr[5:0]),
+	.wr   (xb_wr),
+	.wdata(xb_wdata),
+	.rdata(xl_rdata),
+	.ack  (xl_ack),
+	.xcfg (),
+	.st_snoop      (xs_sn_words),
+	.st_loaded     (32'd0),
+	.st_cram_ops   (32'd0),
+	.st_underruns  (16'd0),
+	.st_snoop_ovf  (sn_ovf),
+	.st_snoop_prg  (sn_prg),
+	.st_loader_lost(16'd0),
+	.st_cram_lost  (16'd0),
+	.st_cram_ready (1'b0),
+	.d_word(xl_d_word), .d_busy(xl_d_busy), .pend(xl_pend), .arm_toggle(xl_arm_tg),
+	.clr_toggle(xl_clr_tg), .od_en(xl_od_en), .od_hold(xl_hold),
+	.stub_lstat({od_sbrq, od_sres, od_armed, od_busy, od_flags}),
+	.stub_late_count(od_late), .stub_post_count(od_posts), .stub_tick(od_tick),
+	.link_status(od_link_status)
+);
+
+// 0.2.6: the Pocket core's MCU option packing (paprium_cart.sv gpio_i): [18:16] the $1FE6 MegaWire status x3 (7 = plugged and
+// signed in, 0 = none), [10:8] and [6] the console's $1FE4 model bits. ppm_reset copies the low half into $1FE4 (with
+// busy) and the high half into $1FE6 at every MCU boot.
+wire  [4:0] mcu_opts = {status[90], opt_model};
+wire [31:0] mcu_gpio_in = {13'd0, {3{mcu_opts[4]}}, 5'd0, mcu_opts[3:1], 1'b0, mcu_opts[0], 6'd0};
+
+wire [15:0] cart_data    = addon_data_en ? addon_data : mdp_data_en ? mdp_data_out : cart_data_rom;
+wire        cart_data_en = addon_data_en | mdp_data_en | cart_data_en_rom;
+wire        cart_dtack   = mdp_dtack   | cart_dtack_rom | addon_dtack;   // 0.2.6: + TMSS-lite
 
 wire        board_reset_n; // INSTRUMENT B from md_board RESET (active-low)
 wire        board_halt_n;  // INSTRUMENT B from md_board HALT (active-low)
@@ -588,6 +844,8 @@ md_board md_board
 	.fx_cart_loaded(fx_cart_loaded), // FXALIGN1P ITEM 1'
 	.pal(PAL),
 	.jap(JAP),
+	.disk_n(opt_disk_n_s),              // 0.2.6: version register bit 5
+	.version({3'b000, opt_ver1_s}),     // 0.2.6: version nibble
 
 	// video
 	.V_R(r),
@@ -647,6 +905,9 @@ dpram #(15,16) ram_68k
 	.wren_b(md_reset)
 );
 
+// 0.2.6: the old test_tap snoop ($FF98E2 -> FPGAIO slot 6) removed: slot 6 is the buddy's mailbox-latch clear.
+
+
 dpram #(13,8) ram_z80k
 (
 	.clock(clk_md),
@@ -675,6 +936,7 @@ dpram_difclk #(10,16,10,16) rom_tmss
 
 reg tmss_enable = 0;
 reg tmss_loaded = 0;
+assign tmss_lite_on = opt_ver1_s & ~(tmss_enable & tmss_loaded);   // 0.2.6: TMSS-lite unless the real TMSS is in
 always @(posedge clk_sys) begin
 	if(ioctl_wr & tmss_download) tmss_loaded <= 1;
 	if(sys_reset) tmss_enable <= status[12];
@@ -697,6 +959,20 @@ cartridge cartridge
 	.vpad_en(status[5]),
 	.vpad1({joy0[8], joy0[11], joy0[10], joy0[9]}),
 	.vpad2({joy1[8], joy1[11], joy1[10], joy1[9]}),
+	.scum_health(status[76]),   // SCUM! Little Man
+	.scum_pills(status[77]),
+	.scum_lives(status[78]),
+	// 0.2.6: buddy Stage 2 + OSD rows (test_tap removed)
+	.xb_req(xb_req),
+	.xb_region(xb_region),
+	.xb_addr(xb_addr),
+	.xb_sel(xb_sel),
+	.xb_wr(xb_wr),
+	.xb_wdata(xb_wdata),
+	.xb_rdata(xb_rdata),
+	.xb_ack(xb_ack),
+	.link_status(od_link_status),
+	.mcu_gpio_in(mcu_gpio_in),
 
 	.SDRAM_CLK(SDRAM_CLK),
 	.SDRAM_CKE(SDRAM_CKE),

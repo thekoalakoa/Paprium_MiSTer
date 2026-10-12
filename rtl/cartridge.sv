@@ -69,6 +69,23 @@ module cartridge
 	input             coin_btn,
 	input       [4:0] stage_sel,
 	input             vpad_en,    // Paprium virtual 6-button (hook injection)
+	input             scum_health, // SCUM! Little Man: Infinite Life   (status[76])
+	input             scum_pills,  // SCUM! Little Man: Infinite Pills  (status[77])
+	input             scum_lives,  // SCUM! Little Man: Infinite Lives  (status[78])
+	// MiSTer: buddy Stage 2 - the Paprium MCU's external-memory bus (clk domain) out to
+	// MegaDrive.sv (compact SRAM window paprium_xwin, register block paprium_xlink), the option-D status into
+	// the MCU's FPGAIO ctrl [14:8], and the OSD rows into the MCU's gpio_i. (the earlier test_tap removed:
+	// FPGAIO slot 6 is the buddy's mailbox-latch clear now.)
+	output            xb_req,
+	output      [1:0] xb_region,
+	output     [23:0] xb_addr,
+	output      [3:0] xb_sel,
+	output            xb_wr,
+	output     [31:0] xb_wdata,
+	input      [31:0] xb_rdata,
+	input             xb_ack,
+	input       [6:0] link_status,
+	input      [31:0] mcu_gpio_in,
 	input       [3:0] vpad1,      // {MODE,Z,Y,X} held, port 1 (raw joystick)
 	input       [3:0] vpad2,
 
@@ -259,11 +276,27 @@ wire        stage_hit  = (rom_addr[23:1] == 23'h5850A) & (stage_sel != 0) & papr
 wire [15:0] stage_data = {8'h00, stage_byte};
 
 reg  [15:0] patch_data;
-reg  [1:0]  patch_grp;
-wire        patch_hit = (patch_grp == 2'd1) ? (paprium_quirk & arcade_unlock) :
-                        (patch_grp == 2'd2) ? hook_en : 1'b0;
+reg  [2:0]  patch_grp;
+// SCUM! Little Man cheats (word list = the Pocket core's scum_table.py / paprium_scum.sv G_HEALTH /
+// G_PILLS / G_LIVES, every "was" word re-checked against the ROM). Groups 3/4/5. The switches are latched
+// at core reset and at each served read of the pad routine word $0B2390, so a flip
+// takes effect at a frame boundary, never mid-routine. Off = the ROM word (patch_hit = 0).
+reg         lat_health = 1'b0, lat_pills = 1'b0, lat_lives = 1'b0;
+wire        cheat_latch = (rom_req == rom_ack) & rom_rd & (rom_addr[23:1] == 23'h591C8);
+always @(posedge clk_ram) begin
+	if (reset | cheat_latch) begin
+		lat_health <= scum_health;
+		lat_pills  <= scum_pills;
+		lat_lives  <= scum_lives;
+	end
+end
+wire        patch_hit = (patch_grp == 3'd1) ? (paprium_quirk & arcade_unlock) :
+                        (patch_grp == 3'd2) ? hook_en :
+                        (patch_grp == 3'd3) ? (paprium_quirk & lat_health) :
+                        (patch_grp == 3'd4) ? (paprium_quirk & lat_pills) :
+                        (patch_grp == 3'd5) ? (paprium_quirk & lat_lives) : 1'b0;
 always @(*) begin
-	patch_grp  = 2'd0;
+	patch_grp  = 3'd0;
 	patch_data = 16'h0000;
 	case(rom_addr[23:1])
 		// group 1: 0xB5AB8/0xB5ACC BEQ -> NOP (force arcade DIP path)
@@ -313,6 +346,41 @@ always @(*) begin
 		23'h8E303: begin patch_grp = 2'd2; patch_data = vp2_held_w;  end
 		23'h8E304: begin patch_grp = 2'd2; patch_data = vp1_press_w; end
 		23'h8E305: begin patch_grp = 2'd2; patch_data = vp2_press_w; end
+		// group 3: Infinite Life - players take no damage (jsr to the slot test); specials cost no health
+		23'h17D62: begin patch_grp = 3'd3; patch_data = 16'h4EB9; end   // 0x02FAC4 was 302A
+		23'h17D63: begin patch_grp = 3'd3; patch_data = 16'h000B; end   // 0x02FAC6 was 0088
+		23'h17D64: begin patch_grp = 3'd3; patch_data = 16'hF000; end   // 0x02FAC8 was B640
+		23'h18745: begin patch_grp = 3'd3; patch_data = 16'h4E71; end   // 0x030E8A was 3340
+		23'h18746: begin patch_grp = 3'd3; patch_data = 16'h4E71; end   // 0x030E8C was 0088
+		// health cave 0x0BF000-0x0BF02D (ROM zero padding)
+		23'h5F800: begin patch_grp = 3'd3; patch_data = 16'h200A; end
+		23'h5F801: begin patch_grp = 3'd3; patch_data = 16'h0280; end
+		23'h5F802: begin patch_grp = 3'd3; patch_data = 16'h00FF; end
+		23'h5F803: begin patch_grp = 3'd3; patch_data = 16'hFFFF; end
+		23'h5F804: begin patch_grp = 3'd3; patch_data = 16'h0480; end
+		23'h5F805: begin patch_grp = 3'd3; patch_data = 16'h00FF; end
+		23'h5F806: begin patch_grp = 3'd3; patch_data = 16'h8710; end
+		23'h5F807: begin patch_grp = 3'd3; patch_data = 16'h6516; end
+		23'h5F808: begin patch_grp = 3'd3; patch_data = 16'hE088; end
+		23'h5F809: begin patch_grp = 3'd3; patch_data = 16'h5280; end
+		23'h5F80A: begin patch_grp = 3'd3; patch_data = 16'h0C80; end
+		23'h5F80B: begin patch_grp = 3'd3; patch_data = 16'h0000; end
+		23'h5F80C: begin patch_grp = 3'd3; patch_data = 16'h00FF; end
+		23'h5F80D: begin patch_grp = 3'd3; patch_data = 16'h620A; end
+		23'h5F80E: begin patch_grp = 3'd3; patch_data = 16'hB039; end
+		23'h5F80F: begin patch_grp = 3'd3; patch_data = 16'h00FF; end
+		23'h5F810: begin patch_grp = 3'd3; patch_data = 16'h9903; end
+		23'h5F811: begin patch_grp = 3'd3; patch_data = 16'h6402; end
+		23'h5F812: begin patch_grp = 3'd3; patch_data = 16'h7600; end
+		23'h5F813: begin patch_grp = 3'd3; patch_data = 16'h302A; end
+		23'h5F814: begin patch_grp = 3'd3; patch_data = 16'h0088; end
+		23'h5F815: begin patch_grp = 3'd3; patch_data = 16'hB640; end
+		23'h5F816: begin patch_grp = 3'd3; patch_data = 16'h4E75; end
+		// group 4: Infinite Pills - subq.b #1,$19(a0,d0.l) -> nop nop
+		23'h0D4FD: begin patch_grp = 3'd4; patch_data = 16'h4E71; end   // 0x01A9FA was 5330
+		23'h0D4FE: begin patch_grp = 3'd4; patch_data = 16'h4E71; end   // 0x01A9FC was 0819
+		// group 5: Infinite Lives - subq.b #1,d0 -> nop
+		23'h15277: begin patch_grp = 3'd5; patch_data = 16'h4E71; end   // 0x02A4EE was 5300
 		default: ;
 	endcase
 end
@@ -518,7 +586,19 @@ paprium_cart paprium
 	.mem_wrl(paprium_mem_wrl),
 	.mem_wrh(paprium_mem_wrh),
 	.mem_req(paprium_mem_req),
-	.mem_ack(rom2_ack)
+	.mem_ack(rom2_ack),
+
+	// MiSTer: buddy Stage 2 + OSD rows
+	.xb_req(xb_req),
+	.xb_region(xb_region),
+	.xb_addr(xb_addr),
+	.xb_sel(xb_sel),
+	.xb_wr(xb_wr),
+	.xb_wdata(xb_wdata),
+	.xb_rdata(xb_rdata),
+	.xb_ack(xb_ack),
+	.link_status(link_status),
+	.gpio_in(mcu_gpio_in)
 );
 
 // Paprium-only: SVP (Virtua Racing) stripped to reclaim M10K/ALM

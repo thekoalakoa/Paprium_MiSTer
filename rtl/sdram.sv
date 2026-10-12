@@ -118,15 +118,16 @@ assign dout2 = dout;
 // access manager
 always @(posedge clk) begin
 	reg [9:0] rfs_cnt;
-	reg rfs, rfs2;
+	reg rfs, rfs2, rfs_top;
 	
 	rfs_cnt <= rfs_cnt + 1'd1;
-	if (rfs_cnt == 850) begin
+	if (rfs_cnt == 836) begin   // 0.2.6: was 850; idle refresh every 838 clk = 7.80 us at 107.386 MHz
 		rfs <= 1;
+		rfs_top <= 1;   // yield fix: the mandatory (top) refresh never yields
 		rfs_cnt <= 0;
 	end
 
-	if (rfs_cnt == 425) rfs2 <= 1;
+	if (rfs_cnt == 418) rfs2 <= 1;
 
 	// Track how long port2 (MCU) has been waiting unserved.
 	if (port2_pending) begin
@@ -135,9 +136,10 @@ always @(posedge clk) begin
 		starve2 <= 0;
 
 	if(state == STATE_IDLE && mode == MODE_NORMAL) begin
-		if (rfs) begin
+		if (rfs && (rfs_top || !(ack1 != req1 && !boost2))) begin   // yield fix: an rfs2-armed refresh yields to a waiting port 1
 			rfs <= 0;
 			rfs2 <= 0;
+			rfs_top <= 0;
 			rfs_cnt <= 0;
 			we <= 0;
 			dqm <= 2'b00;
@@ -151,7 +153,7 @@ always @(posedge clk) begin
 			dqm <= wr[0] ? ~{wrh0,wrl0} : 2'b00;
 			active <= 1;
 			ram_req[0] <= 1;
-			rfs <= rfs2;
+			rfs <= rfs2 | rfs;
 			state <= STATE_START;
 		end
 		else if (ack1 != req1 && !boost2) begin
@@ -161,7 +163,7 @@ always @(posedge clk) begin
 			dqm <= wr[1] ? ~{wrh1,wrl1} : 2'b00;
 			active <= 1;
 			ram_req[1] <= 1;
-			rfs <= rfs2;
+			rfs <= rfs2 | rfs;
 			state <= STATE_START;
 		end
 		else if (ack2 != req2) begin
