@@ -114,3 +114,9 @@ Paprium_MiSTer as a whole is licensed under the **GNU General Public License, ve
 **Exception:** VM2413 (`rtl/VM2413/`), Copyright (c) 2006 Mitsutaka Okazaki, is distributed under its own original terms, not under the GPL. Those terms include a non-commercial clause; the licence text is kept in the headers of its files.
 
 Paprium is a trademark of its owners. This project is not affiliated with WaterMelon.
+Paprium game content (WaterMelon IP)
+This project's GPLv3 license covers only our code. It does not include, and grants no rights to, Paprium's game ROM, code, music, graphics or other assets, which are owned by WaterMelon.
+
+Do not distribute ports, forks or modified builds of this project bundled with Paprium's ROM, decompiled game code or assets. Doing so infringes WaterMelon's copyright and is not covered by our license.
+Players must supply their own legally owned copy of the game.
+Any port or modification of our code that ships with WaterMelon content without WaterMelon's written permission is unauthorized, and we will report it.
