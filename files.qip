@@ -31,11 +31,31 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_mcu_mem.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_backup.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_mdp_adapter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cart.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_fetch.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_buf.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cdda_play.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_ima_decode.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_pcm_load.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_scum.sv
+# 0.3.0 board layer (MiSTer Board): album stack (cdda_*, ima_decode, pcm_load) removed; Pocket-take files the
+# 0.3.0 paprium_cart / pad_io / MegaDrive.sv instantiate, plus MiSTer's DDR3 CRAM window
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_regfile.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_hwdec.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_pads.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_gs3.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_vs_tap.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_if.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_bus.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_cram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_sram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_trom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_tim6.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_env.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_gain.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_wave.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_sfx.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_echo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_dtplay.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_sched.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth_out.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_synth.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_cram_ddr.sv
 # 0.2.6: buddy Stage 2 (hook-free CPU MATE) + Mega CD / 32X stubs, MiSTer port
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_addons.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/PAPRIUM/paprium_mcd_link.sv
@@ -71,6 +91,7 @@ set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_busswitch.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_bootloader_image.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_boot_rom.vhd
 set_global_assignment -name VHDL_FILE rtl/PAPRIUM/risc-v/neorv32_application_image.vhd
+set_global_assignment -name VHDL_FILE rtl/PAPRIUM/paprium_neorv32.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cartridge.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/md_plus.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mdp_audio.sv

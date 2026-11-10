@@ -1,162 +1,114 @@
-The game's **CPU MATE** partner on MiSTer, a menu of cheats, arcade and console options, and the
-end-credits and Solarium bugs fixed by doing what the original cartridge does. This release mirrors the
-[Paprium Pocket core 0.2.6](https://github.com/thekoalakoa/paprium-pocket/releases/tag/0.2.6), adapted for MiSTer.
+# Paprium for MiSTer 0.3.0
+
+This release mirrors [Paprium for Analogue Pocket 0.3.0](https://github.com/thekoalakoa/paprium-pocket/releases/tag/v0.3.0), adapted for MiSTer.
+
+**Downloads**
+- `Paprium_MiSTer_0.3.0.zip`: the core. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, and Little-Man Firmware 1.0 in `games/Paprium/little_man_firmware.bin`.
+
+**Before you install, back up your save** (`saves/Paprium/Paprium.sav`) to your PC. On the first start we convert a 0.2.x save, once, into the cartridge's own format. Then follow [docs/INSTALL.md](https://github.com/thekoalakoa/Paprium_MiSTer/blob/main/docs/INSTALL.md).
+
+## The short version
+
+0.3.0 makes the core act like the real cartridge. The music is made the way the cartridge makes it, in both of the game's sound options (YM and Datenmeister), so you don't need a soundtrack file anymore. The cartridge's chip runs our own firmware, Little-Man Firmware 1.0. Our team wrote it from our own study of how the cart behaves. Each start takes longer while the core unpacks the game's sounds from your copy of the game. There is no progress bar, and no sound-cache file is kept, so this happens every time you launch the core.
 
 ## Install
 
-Unzip `Paprium_MiSTer_0.2.6.zip` onto the SD card: it puts `Paprium.rbf` and `Paprium.mgl` in `_Console`,
-replacing the old files. Your saves and settings carry over. You need the `paprium.pcm` and `Paprium.md` you
-already use, in `games/Paprium/Paprium/`; no ROM or music is included. Launch `Paprium.mgl`.
-Everything new is **off by default**. With the defaults, the one menu-level difference from the previous
-release is that the game no longer shows a MegaWire as connected, which is what a real cartridge does with
-nothing plugged in.
+1. Unzip `Paprium_MiSTer_0.3.0.zip` onto the SD card. It replaces `_Console/Paprium.rbf` and `_Console/Paprium.mgl`, and puts the firmware at `games/Paprium/little_man_firmware.bin`.
+2. Keep your `Paprium.md` where it is, in `games/Paprium/Paprium/`. No game or music is included.
+3. Launch `Paprium.mgl`. It loads the firmware first, then the game:
+
+   ```
+   <mistergamedescription>
+       <rbf>_Console/Paprium</rbf>
+       <!-- 0.3.0: load the Little-Man firmware first, from games/Paprium/little_man_firmware.bin, through the OSD's "Load Little-Man Firmware" row (F4), then the game. -->
+       <file delay="1" type="f" index="4" path="/media/fat/games/Paprium/little_man_firmware.bin"/>
+       <file delay="1" type="f" index="1" path="/media/fat/games/Paprium/Paprium/Paprium.md"/>
+   </mistergamedescription>
+   ```
+
+   The firmware is not auto-loaded by MiSTer by filename.
+
+You can delete `paprium.pcm`, and the `paprium.cue` next to it. 0.3.0 doesn't use either. If you might go back to 0.2.6, keep them, because 0.2.6 needs the soundtrack for music. If you still have a `boot1.rom` or `LittleMan.bin` in `games/Paprium/` from an earlier test build, you can delete it. A leftover `config/Paprium.s1` is only Main's memory of the old 0.2.6 soundtrack pick; 0.3.0 doesn't use it, and you can delete it too.
+
+**If the screen stays plain red**, Paprium.mgl couldn't load a good `little_man_firmware.bin`. Copy the file from this release into `games/Paprium/little_man_firmware.bin` and start the core again from Paprium.mgl. The game won't start until that file is right.
 
 ## New
 
-**CPU MATE.** With a Mega CD unit chosen in the OSD, Paprium offers its computer-controlled partner, as it
-does on a real Mega Drive with a Mega CD:
+- **The music, made the way the cartridge makes it.** We rebuilt the cartridge's sound chip in the core's logic, and our music player runs in the firmware the way the cartridge's does. So the music follows the game like it does on a cart: the low-health music, the sax man's cues, the Boom Box's X, Y and Z effects and the fades.
+- **Sound effects on our rebuild of the cartridge's synthesiser**, filter and echo included.
+- **Little-Man Firmware**, our own firmware for the cartridge's chip, now its own file. On MiSTer it lives at `games/Paprium/little_man_firmware.bin`, and Paprium.mgl loads it. It holds the firmware, our MegaWire code and the CPU MATE partner's brain. It's GPL-3.0-or-later, and the source is in the Pocket repo's `firmware/` folder. If the file is missing, damaged, or was made for a different core version, the screen goes plain red and the game won't start (see INSTALL).
+- **A longer start.** The core unpacks the game's sounds from your copy of the game. The screen stays black while it does that, with no progress bar. MiSTer does not keep a sound-cache file, so the unpack happens every time you launch the core.
+- **Arcade Mode is now a virtual Grand Stick III**, with Off, On, Multiplayer and Stick Only. On and Multiplayer flip the stick's ARCADE switch, so the game turns on its own arcade mode with no change to the ROM. Mode drops a coin, and like a real stick, the first coin after power-on or a reset doesn't give a credit. Stick Only is the stick with every switch off: the normal game, with Mode as the stick's Mode button. Also new: **Arcade Coins** and **Attract Only**.
+- **3-Player Mode** (Off by default): an EA 4-Way Play, for the game's three-player modes with three controllers.
+- **TeraDrive** in the Console list.
+- **Load Little-Man Firmware** in the OSD, for testing a firmware file by hand. Normal play just uses `little_man_firmware.bin`, loaded by Paprium.mgl.
 
-1. OSD, **SCUM! (Needs Reset)** page: **CD Model** = any unit except None or Unknown, then **Reset**.
-2. In the game's Options, switch **CPU MATE** on.
-3. At character select, bring the partner in:
-   - **With one controller:** turn **6-Button Mode** on (SCUM! (Needs Reset) > Grand Stick Options).
-     **Hold Mode** to add the partner; still holding it, move the partner's cursor with the D-pad and press
-     **Start** to pick its character. Release Mode to pick your own. It is the game's own six-button control
-     with a Mega CD ([Paprium FAQ](https://www.wafflenet.com/paprium.html#questions)).
-   - **With a second controller:** press **Start on controller 2**, and again to pick its character.
+The CPU MATE partner, the Scum! cheats, and the console and Mega CD options from 0.2.6 are all still here. The old diagnostic rows, and the separate Console Reset, are gone. The regular **Reset** in the OSD still does a full reset, cart included, and so does the **USER** button on the MiSTer.
 
-On the real thing the partner's AI runs on the Mega CD's sub-CPU. Here it is the game's own AI program,
-re-implemented to run on the cartridge MCU, behind a Mega CD link that hands the game the partner's moves at
-the moment the real sub-CPU would. The game's code is not patched. The brain is built into `Paprium.rbf`;
-nothing extra to download to play.
+## Changed (read this before you upgrade)
 
-**SCUM! (Needs Reset)**, the new OSD page (change, then Reset):
-
-| Entry | What it does |
-|---|---|
-| **Grand Stick Options** > **6-Button Mode** | X, Y, Z and Mode reach the game |
-| **Grand Stick Options** > **Swap Joysticks** | Swaps controllers 1 and 2 |
-| **Grand Stick Options** > **Arcade Mode** | The game's hidden ARCADE PAPRIUM mode (credits, friendly fire). **Mode inserts a coin** |
-| **Grand Stick Options** > **Arcade Stage** | The stage Arcade Mode starts on |
-| **Little-Man** > **Infinite Life** | Players take no damage, specials cost none; enemies unaffected |
-| **Little-Man** > **Infinite Pills** | Blu pills are not spent |
-| **Little-Man** > **Infinite Lives** | Lives are not spent |
-
-Nothing touches your ROM file: while a switch is on, the cartridge serves a few replacement words in place of
-the game's own, like a Game Genie in the FPGA.
-
-**The machine the game sees**, on the same page, each read at boot (change, then Reset):
-
-| Entry | Choices |
-|---|---|
-| **Console** | Mega Drive (default), Genesis, Mega Drive 2, Genesis Model 2, Genesis 3, Nomad, Mega Jet, Unknown. Sets the region and the console picture in the Boom Box; the TMSS models boot with no licence screen |
-| **CD Model** | None (default), Mega-CD / Sega CD, Mega-CD 2 / Sega CD 2, Wondermega, Wondermega M2 / X'Eye, LaserActive, Aiwa CSD-GM1, CDX, Unknown. Each with its splash and region |
-| **32X Mode** | The game believes a 32X is attached; some throwables become 32X boxes |
-| **MegaWire4.0** | Off by default, which is what a real cartridge reports with nothing plugged in: MODEM : NONE, no MegaWire icon. Every earlier release showed a MegaWire as connected; On brings that back |
+- **Saves** now use the cartridge's own format: 8 KB, the size of the cart's save chip. We convert a 0.2.x save once, on the first start. We haven't tested going back to 0.2.x with a converted save, so keep a copy of your 0.2.x save.
+- **No more soundtrack file.** 0.3.0 doesn't read `paprium.pcm` or `paprium.cue`, so you can delete them (0.2.6 still needs them).
+- **The OSD is simpler.** The old diagnostic rows, and the separate Console Reset, are gone. **Reset** and the **USER** button both do a full reset.
+- **6-Button Mode** gives the game real six-button pads on controllers 1 and 2, and the game reads X, Y, Z and Mode itself.
+- **The cartridge's watchdog is back.** With the OSD closed, if the game stops sending its once-a-frame signal for about 4 seconds, the cartridge's chip halts, same as a real cart.
+- **Sprites, zooms, unpacking the game's data, saves and start-up** now work the way the cartridge does them.
+- **Sprites use the cartridge's colours.** Dice's afterimage outline is green like on the cart (0.2.x drew it blue), and the first level's doorway takes its colours from the cartridge's own rule.
 
 ## Fixed
 
-**Enemies that could not be killed, and Pang's KTV Member Card going missing.** When enemies dropped in from
-above after a food pickup, an enemy could turn invisible and unkillable and stop the screen scrolling, so the
-section could not be finished. In Original mode, beating Pang at Golden Of Seas earns his KTV Member Card, the
-pass the bouncer at Digniti KTV asks for. Without it the run ends at Digniti KTV with "THE END?", before The
-Vault, Sanophix Labs, The Solarium and the ending, as it does on a real cartridge. Here, Pang still handed the
-card over on screen, but it was not always kept in the save. The core's cartridge memory stored single-byte
-writes from the console, which a real cartridge does not, so the game's own check of the cartridge concluded
-it was not genuine and, until the game was reset or switched off, did both. The cartridge memory now ignores
-single-byte writes, and the check passes as it does on a real cartridge. A save that lost the card under an
-earlier release does not get it back by itself: clear Golden Of Seas once more in Original mode. Every
-earlier release had this.
+- **Hall of Fame name entry**: the highlight bar is clean with Arcade Stage or 6-Button Mode on (a 0.2.6 known issue, verified on the pass 10 hardware run).
+- **The Arcade coin** plays the game's coin sound on every press.
+- **TMSS**, the licence check later consoles run at power-on, works on every all-in-one Mega CD unit (Wondermega, Wondermega M2 / X'Eye, LaserActive, Aiwa CSD-GM1, CDX).
 
-**The end credits.** After the Bishop fight, sparkles were drawn as squares of background art, and the
-credits pictures had damaged tiles. The firmware's sprite cache now works the way the original cartridge's
-does, and the sparkle lands clear of the background every time.
+## Where we differ from the original cartridge
 
-**The Solarium float.** At the end of the game, characters froze in mid-walk and floated across the camera
-pan. The sprite table is now closed the cartridge's way, with an end mark.
+These are the differences you might notice. Each one is on purpose.
 
-**Freezes in busy fights.** A character could freeze in a pose when its new pose's art was refused a slot.
-With the new cache, and the DMA budget and pose hold following the cartridge, a pose that does not fit is held
-whole or pre-loaded over a few frames, never drawn in part.
-
-**Animation, the cartridge's way.** When the firmware takes a queued animation, it writes it back into the
-game's object record, as the cartridge does, so a dropped weapon settles and a character walking in keeps
-walking.
-
-**The Boom Box bars** run at the measured tempo instead of about 20% fast.
-
-## Under the hood
-
-- SDRAM refresh: idle refresh every 838 clocks (counter 836, second refresh at 418), 7.80 us at 107.386 MHz.
-- The release firmware compiles all debug output out.
-- Fit: seed 3, 26,541 ALM, 393 M10K, worst setup −0.583 ns, hold passes.
-
-## Tested
-
-The previous test build passed the 17-item hardware checklist on 10/10. The final build, with the
-cartridge-memory fix, passed a hardware test on a real MiSTer before release.
+- **Starting takes longer.** The core holds the game until the cartridge's chip is ready, checks the firmware file, and unpacks the game's sounds from your copy of the game. There is no progress bar, and no sound-cache file is kept, so the unpack happens every time you launch the core.
+- **The OSD** can pause the game while it is open. The cart's watchdog stops counting while the menu is open.
+- **Datenmeister's output**: we don't copy what the cartridge's output circuit does to the sound. Instead there's a plain stand-in: one volume, and a filter that only removes a steady offset (below 4 Hz).
+- **Corners the game never reaches**, like asking for more than 53 sprite slots, are handled safely here. The cart's chip would read or write unrelated memory of its own.
+- **MegaWire details only a module would ever see**: the server name stored for a module is `www.koalakoa.com`, and the restart command in the game's own MegaWire menu doesn't save a MegaWire record.
 
 ## Known issues
 
-- The music is the released soundtrack (`paprium.pcm`) rather than the cartridge's own live synthesiser.
-- **Audio & Video page:** **Aspect Ratio** seems to do nothing; **Scandoubler Fx** can lose sync; the effect
-  of **Audio Filter**, **FM Chip** and **Stereo Mix** is unclear.
-- **Hall of Fame name entry, with Arcade Mode, Arcade Stage or 6-Button Mode on:** the blinking bar on the
-  entry row can show garbage, worst at the left edge where the initials go, and may miss a press. This is the
-  same replacement-word code as the Pocket core's, so the same issue applies. Little-Man alone does not do it.
-- **After changing Console or CD Model, a second Reset may be needed** for the correct console picture. Change
-  the setting first, then Reset; if it looks wrong, Reset again.
+- **Audio & Video page:** Aspect Ratio, Scandoubler Fx, Audio Filter, FM Chip and Stereo Mix may have little or no effect, or may disturb video sync.
+- A first launch with no save file starts at the mini-game. That is the cart's own behaviour. Hit Reset after it.
 
-## Building it yourself: the CPU MATE brain download
+## Hashes
 
-Players do not need this; the brain is already in `Paprium.rbf`.
-
-The partner's brain is made from the game's own code, so it is not in the repository. It is the second asset
-of this release, **`cpu-mate-brain_0.2.6.zip`**: three files and a short README. It is the same brain as the
-Pocket core's 0.2.6, byte for byte.
-
-| file | md5 |
-|---|---|
-| `brain.bin` | `1b64e14d710e8768d3385d1421162bc7` |
-| `cf.bin` | `a5fa37b435f26f9fc2c8fd62d218d7ef` |
-| `rodata.bin` | `5b1d74f454b578196ed1e82548f01b99` |
-
-Unzip it in the top folder of your clone. It makes `cpu-mate-brain/`, which the repository ignores (any other
-folder works too, with `--brain <folder>`). Then build:
-
-```bash
-./scripts/build_mcu.sh --brain cpu-mate-brain    # checks the md5s; installs the MiSTer release firmware
-quartus_sh --flow compile MegaDrive              # seed 3, set in MegaDrive.qsf
-```
-
-With the brain, `build_mcu.sh` gives the MiSTer 0.2.6 firmware images byte for byte: `mcu.txt` `47644152`,
-`mcu_ext.txt` `4c23775c`, `wram_hi.txt` `3fe6acc4`, `wram_lo.txt` `256d3b2a`. The four images contain the
-brain, so they are git-ignored; never commit them. The brain zip's own README describes the Pocket build; on
-MiSTer use the commands above. A fresh fit is not guaranteed to reproduce the released bitstream bit for bit;
-the `Paprium.rbf` in the release zip is the reference. Details:
-[docs/firmware/README.md](https://github.com/thekoalakoa/Paprium_MiSTer/blob/main/docs/firmware/README.md).
-
-## Checksums
+These are the files in `Paprium_MiSTer_0.3.0.zip`. The rbf is the pass 10 build that was checked on hardware. The mgl loads `little_man_firmware.bin`. The firmware is Little-Man Firmware 1.0, the same file published with Pocket 0.3.0; the copy in the zip is the one from the card that ran that check.
 
 | file | bytes | md5 | SHA-256 |
 |---|---|---|---|
-| `Paprium_MiSTer_0.2.6.zip` | 1,929,372 | `ea3396b39d3ca571516fbf9227b99d05` | `a905159da93f9e01ade8eb343fe1ebef6ac2cf0c309b8e04b6d3c4a36f32e5b6` |
-| &nbsp;&nbsp;`_Console/Paprium.rbf` | 3,912,644 | `86c1447eae06ae154a804d75ff0892b7` | `8f6f048cd93678d6a47c8ec66bd0f553e2ffe6034128dfaf4b7399c29ce6fb51` |
-| &nbsp;&nbsp;`_Console/Paprium.mgl` | 266 | `b9bcd0006761c30919115c956c1942d5` | `271f4d172683e54cb4233596cd64b13c3d081051fad5a50e1ed8d414521f9974` |
-| `cpu-mate-brain_0.2.6.zip` | 21,372 | `ebdb2367c45b7a8168a83070f3447d10` | `341b3d0cabb996bbcc6c10ccc356c288b528c2934b6620231ef95dbf32159075` |
-| &nbsp;&nbsp;`cpu-mate-brain/brain.bin` | 32,652 | `1b64e14d710e8768d3385d1421162bc7` | `bdb2fa1de464f38e6dd0e04ebdaab3a2f890e7f84bc6021a258e333d03b92162` |
-| &nbsp;&nbsp;`cpu-mate-brain/cf.bin` | 5,328 | `a5fa37b435f26f9fc2c8fd62d218d7ef` | `c2bd564659b1e425f391de2e1fc286abfd944e2f5070b7d9786a3bc08d6926f2` |
-| &nbsp;&nbsp;`cpu-mate-brain/rodata.bin` | 1,336 | `5b1d74f454b578196ed1e82548f01b99` | `5ce54fe2b6307ffc8cc374c665ee3dae217a65e75c6ebc031c2595e3a47b0ad5` |
+| `Paprium_MiSTer_0.3.0.zip` | 1,836,591 | `9e59857b77f00c1b4b3eb7fb6a3a3fd2` | `41e54544f820e57309484278718e1faaa1be1ee1dad7238e4fc75106ed94e4d7` |
+| `_Console/Paprium.rbf` | 4,179,336 | `d1b2f73f029f8cf753700327d7b0ffb1` | `9e259a7e791b6f601fce3a3e914eef38f2854e1fa676bca7d59a45008d3e998a` |
+| `_Console/Paprium.mgl` | 440 | `7e7c47496937a24440202ffcc13f48ef` | `0b3ca982c5f629c997403831dff2b866dd21363f195babf166d40f8046ec67dc` |
+| `games/Paprium/little_man_firmware.bin` (Little-Man Firmware 1.0) | 262,144 | `f8cda67209d0e4d35beb077ae88fb16b` | `6fb90204322c6a5596bfb4d3a743696cbdced5744cf8d4b9f09aa9fc322873e2` |
+
+## Source and licence
+
+- GPL-3.0-or-later. The firmware source (apart from the CPU MATE brain, see the README's Licence section) is in the [paprium-pocket](https://github.com/thekoalakoa/paprium-pocket) repository at tag `v0.3.0`, in its `firmware/` folder.
+- What the core is built on, and the notices for parts under other licences: see the README's Lineage, History and Licence sections and `THIRD_PARTY_NOTICES.md` in the repo.
+- Under other licences, each with its full notice in `THIRD_PARTY_NOTICES.md`: BSD-3-Clause for krikzz's mega-ppm code in the cartridge logic, and for mega-ppm code this release's firmware file still carries from 0.2.6, and for the NEORV32 processor; Conifer Software's BSD licence for the WavPack decoder and BSD-2-Clause for newlib's `memcpy` / `memset` (both in the firmware file). Nuked-MD-FPGA (GPLv2-or-later) and FX68K (GPLv3) keep their own licence files in the source. VM2413 is under its own original terms, not the GPL.
+- Copyright (C) 2026 Marsupial Solutions LLC. Made by Marsupial Solutions LLC: bJam, Freya, Isa, Spec and Koalakoa.
+- Little-Man Firmware (trademark pending) is Marsupial Solutions LLC's name for this firmware.
+- You bring your own copy of the game. The ROM, and anything taken from it, never ships: not in this repo, not in this release, not in any download.
+- Paprium is a trademark of its owners. This project is not affiliated with WaterMelon. It is a free, non-commercial project: it is not sold, and the game is not included.
+
+## Building it yourself
+
+Players do not need this. The firmware is already in `games/Paprium/little_man_firmware.bin`.
+
+The firmware is no longer built into the bitstream, so building the core is:
+
+```bash
+quartus_sh --flow compile MegaDrive
+```
+
+The release bitstream was fitted with seed 1, which is what `MegaDrive.qsf` says, so that command uses the same seed. To rebuild the firmware file, use the Pocket `firmware/` tree and the CPU MATE brain download, which is not in the repository. See [docs/firmware/README.md](https://github.com/thekoalakoa/Paprium_MiSTer/blob/main/docs/firmware/README.md). A fresh fit is not guaranteed to reproduce the released bitstream bit for bit; the `Paprium.rbf` in the release zip is the reference.
 
 ## Credits
 
-This core is a port of the [Paprium Pocket core](https://github.com/thekoalakoa/paprium-pocket): the CPU MATE,
-the Scum! options, the console and Mega CD options, the cartridge-memory fix and the firmware fixes come from
-it. The arcade unlock and the Mode-button coin are [adroxe](https://github.com/adroxe/Paprium-Arcade)'s; the
-arcade start-stage word was found by krikzz; ROM-read patches, the pad hook and the stage names come from
-[MisterPezz82](https://github.com/MisterPezz82/Paprium_MegaDrive_MiSTer)'s Paprium MiSTer core. The cartridge
-MCU runs krikzz's [mega-ppm](https://github.com/krikzz/mega-ppm) firmware on Stephan Nolting's
-[NEORV32](https://github.com/stnolting/neorv32), both BSD-3-Clause. The Mega Drive core is nukeykt's
-[Nuked-MD-FPGA](https://github.com/nukeykt/Nuked-MD-FPGA), the 68000 is Jorge Cwik's
-[FX68K](https://github.com/ijor/fx68k), on the [MiSTer](https://github.com/MiSTer-devel) framework. The rest of
-the lineage is in the [README](https://github.com/thekoalakoa/Paprium_MiSTer#credits).
+This core is a port of the [Paprium Pocket core](https://github.com/thekoalakoa/paprium-pocket): the music and sound rebuild, Little-Man Firmware, the CPU MATE, the Scum! options, the console and Mega CD options and the fixes come from it. The rest of the lineage is in the [README](https://github.com/thekoalakoa/Paprium_MiSTer#lineage).

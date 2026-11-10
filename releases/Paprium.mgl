@@ -1,5 +1,6 @@
 <mistergamedescription>
     <rbf>_Console/Paprium</rbf>
-    <file delay="2" type="s" index="1" path="/media/fat/games/Paprium/Paprium/paprium.pcm"/>
+    <!-- 0.3.0: load the Little-Man firmware first, from games/Paprium/little_man_firmware.bin, through the OSD's "Load Little-Man Firmware" row (F4), then the game. -->
+    <file delay="1" type="f" index="4" path="/media/fat/games/Paprium/little_man_firmware.bin"/>
     <file delay="1" type="f" index="1" path="/media/fat/games/Paprium/Paprium/Paprium.md"/>
 </mistergamedescription>

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Paprium battery-backup (SRAM save) RAM.
 //
-// Paprium's save is the MCU-managed backup RAM (4 KB). On real hardware the
+// Paprium's save is the MCU-managed backup RAM (8 KB). On real hardware the
 // EverDrive/ASIC persists it; here we back it with an on-chip true-dual-port
 // RAM whose second port is the MiSTer cartridge save interface, so the HPS
 // load/save (.sav) path persists it like any normal Mega Drive SRAM.
@@ -14,9 +14,11 @@
 // infers it into M10K block RAM (byte-enabled partial writes do not infer and
 // blow up into thousands of registers - hence the read-modify-write here).
 //
-// 4 KB = 2048 x 16. The MCU 32-bit word index is mcu.addr[11:2]; the save side
-// uses save_addr[10:0]. bram_change pulses on an MCU write to drive autosave.
+// 8 KB = 4096 x 16 (0.3.0; 0.2.x 4 KB). The MCU 32-bit word index is mcu.addr[12:2]; the save side
+// uses save_addr[11:0]. bram_change pulses on an MCU write to drive autosave.
 // ---------------------------------------------------------------------------
+
+// Changes: Copyright (C) 2026 Marsupial Solutions LLC (GPL-3.0-or-later)
 
 module paprium_backup
 (
@@ -35,7 +37,7 @@ module paprium_backup
 	input             save_wr
 );
 
-	localparam AW = 11;   // 2048 x 16 = 4 KB
+	localparam AW = 12;   // 4096 x 16 = 8 KB (0.3.0, the cart's size; 0.2.x: 11, 4 KB)
 
 	// ---- True dual-port RAM via the core's proven dpram_dif (infers M10K) ----
 	// Port A = MCU (16-bit), Port B = HPS save (16-bit). Full-word writes; byte
@@ -62,8 +64,8 @@ module paprium_backup
 	assign save_do = b_q;
 
 	// ---- MCU 32-bit access FSM (read-modify-write per 16-bit half) ----
-	wire [AW-1:0] a0 = {mcu.addr[11:2], 1'b0};
-	wire [AW-1:0] a1 = {mcu.addr[11:2], 1'b1};
+	wire [AW-1:0] a0 = {mcu.addr[AW:2], 1'b0};
+	wire [AW-1:0] a1 = {mcu.addr[AW:2], 1'b1};
 
 	localparam IDLE=0, RD0=1, WR0=2, RD1=3, WR1=4, ACK=5, DONE=6;
 

@@ -19,6 +19,14 @@
 // whole word, ack held until the request drops; sn_* snoop FIFO head, 16-bit "native" words {UB,LB}),
 // minus the APF loader and the SRAM pins. clk = clk_sys (the MCU's clock), no clock crossing here.
 
+// 0.3.0:
+//   0x00000-0x0FFFF  64 KB   the MegaWire area: the boot stub stores the file's SRAM section here; MCU stores are
+//                            dropped once XLINK XCFG bit 16 (cfg_lock) is set, as the Pocket's paprium_xram. Own RAM,
+//                            64 M10K.
+//   the glue scratch window is widened from 0x18000-0x18FFF to 0x18000-0x1DFFF (24 KB) for the MegaWire RAM
+//   (0x18C00-0x1D897). The small windows are repacked: PRG 0x0000, terrain 0x0800, objects 0x1000, records 0x1400,
+//   header 0x1480, cursor 0x1500, scratch 0x1580-0x2D7F (word indices): 45.5 KB.
+
 module paprium_xwin (
 	input  wire        clk,
 	input  wire        reset,
@@ -29,6 +37,7 @@ module paprium_xwin (
 	input  wire  [1:0] sn_be,                      // {UB, LB}
 	output reg         sn_take,
 
+	input  wire        cfg_lock,                   // 0.3.0: XLINK xcfg[16], stores below 0x10000 dropped
 	input  wire        mc_req,
 	input  wire [17:0] mc_addr,                    // SRAM byte address
 	input  wire  [3:0] mc_sel,
@@ -40,27 +49,29 @@ module paprium_xwin (
 	output reg  [31:0] stat_snoop_writes
 );
 
-	localparam integer DEPTH = 6656;              // 0x6800 bytes / 4 (26 KB, 13 x 2 M10K)
+	localparam integer DEPTH = 13'h1580 + 13'h1800;   // 11,648 words (45.5 KB)
 
-	function automatic [13:0] wmap(input [17:0] a);   // {hit, 13-bit word index}
+	function automatic [14:0] wmap(input [17:0] a);   // {hit, 14-bit word index}
 		begin
-			if      (a[17:13] == 5'b01000)     wmap = {1'b1, 13'h0000 | {2'b00, a[12:2]}};   // 0x10000 PRG
-			else if (a[17:13] == 5'b10100)     wmap = {1'b1, 13'h0800 | {2'b00, a[12:2]}};   // 0x28000 terrain
-			else if (a[17:12] == 6'b100000)    wmap = {1'b1, 13'h1000 | {3'b000, a[11:2]}};  // 0x20000 objects
-			else if (a[17:12] == 6'b011000)    wmap = {1'b1, 13'h1400 | {3'b000, a[11:2]}};  // 0x18000 scratch
-			else if (a[17:9]  == 9'b100100000) wmap = {1'b1, 13'h1800 | {6'b000000, a[8:2]}}; // 0x24000 records
-			else if (a[17:9]  == 9'b110000000) wmap = {1'b1, 13'h1880 | {6'b000000, a[8:2]}}; // 0x30000 header
-			else if (a[17:9]  == 9'b010010000) wmap = {1'b1, 13'h1900 | {6'b000000, a[8:2]}}; // 0x12000 cursor
-			else                               wmap = 14'd0;
+			if      (a[17:13] == 5'b01000)     wmap = {1'b1, 14'h0000 | {3'b000, a[12:2]}};   // 0x10000 PRG
+			else if (a[17:13] == 5'b10100)     wmap = {1'b1, 14'h0800 | {3'b000, a[12:2]}};   // 0x28000 terrain
+			else if (a[17:12] == 6'b100000)    wmap = {1'b1, 14'h1000 | {4'b0000, a[11:2]}};  // 0x20000 objects
+			else if (a[17:9]  == 9'b100100000) wmap = {1'b1, 14'h1400 | {7'd0, a[8:2]}};      // 0x24000 records
+			else if (a[17:9]  == 9'b110000000) wmap = {1'b1, 14'h1480 | {7'd0, a[8:2]}};      // 0x30000 header
+			else if (a[17:9]  == 9'b010010000) wmap = {1'b1, 14'h1500 | {7'd0, a[8:2]}};      // 0x12000 cursor
+			else if ((a >= 18'h18000) && (a < 18'h1E000))
+			                                   wmap = {1'b1, 14'h1580 + {1'b0, a[14:2]}};  // 0x18000-0x1DFFF scratch (a[14:0] = offset from 0x18000)
+			else                               wmap = 15'd0;
 		end
 	endfunction
 
 	(* ramstyle = "M10K, no_rw_check" *) reg [3:0][7:0] ram [0:DEPTH-1];
-	reg  [12:0] waddr, raddr;
+	(* ramstyle = "M10K, no_rw_check" *) reg [3:0][7:0] mw   [0:16383];   // 0x00000-0x0FFFF MegaWire area
+	reg  [13:0] waddr, raddr;
 	reg  [31:0] wdat;
 	reg   [3:0] wbe;
-	reg         we;
-	reg  [3:0][7:0] q;
+	reg         we, mwe, rd_mw;
+	reg  [3:0][7:0] q, qm;
 
 	always @(posedge clk) begin
 		if (we) begin
@@ -71,9 +82,19 @@ module paprium_xwin (
 		end
 		q <= ram[raddr];
 	end
+	always @(posedge clk) begin
+		if (mwe) begin
+			if (wbe[0]) mw[waddr][0] <= wdat[7:0];
+			if (wbe[1]) mw[waddr][1] <= wdat[15:8];
+			if (wbe[2]) mw[waddr][2] <= wdat[23:16];
+			if (wbe[3]) mw[waddr][3] <= wdat[31:24];
+		end
+		qm <= mw[raddr];
+	end
 
-	wire [13:0] mc_m = wmap(mc_addr);
-	wire [13:0] sn_m = wmap({sn_waddr, 1'b0});
+	wire        mc_lo = (mc_addr[17:16] == 2'b00);
+	wire [14:0] mc_m = wmap(mc_addr);
+	wire [14:0] sn_m = wmap({sn_waddr, 1'b0});
 
 	localparam S_IDLE = 2'd0, S_RD1 = 2'd1, S_RD2 = 2'd2;
 	reg  [1:0] st = S_IDLE;
@@ -82,6 +103,7 @@ module paprium_xwin (
 
 	always @(posedge clk) begin
 		we      <= 1'b0;
+		mwe     <= 1'b0;
 		sn_take <= 1'b0;
 		if (!mc_req) begin
 			mc_ack  <= 1'b0;
@@ -95,22 +117,24 @@ module paprium_xwin (
 			S_IDLE:
 				if (mc_req & ~mc_ack & ~mc_done) begin
 					if (mc_wr) begin
-						we      <= mc_m[13] & (mc_sel != 4'b0000);
-						waddr   <= mc_m[12:0];
+						we      <= mc_m[14] & (mc_sel != 4'b0000);
+						mwe     <= mc_lo & ~cfg_lock & (mc_sel != 4'b0000);
+						waddr   <= mc_lo ? mc_addr[15:2] : mc_m[13:0];
 						wdat    <= mc_wdata;
 						wbe     <= mc_sel;
 						mc_ack  <= 1'b1;
 						mc_done <= 1'b1;
 					end
 					else begin
-						raddr  <= mc_m[12:0];
-						rd_hit <= mc_m[13];
+						raddr  <= mc_lo ? mc_addr[15:2] : mc_m[13:0];
+						rd_hit <= mc_m[14] | mc_lo;
+						rd_mw  <= mc_lo;
 						st     <= S_RD1;
 					end
 				end
 				else if (sn_valid & ~sn_take) begin
-					we      <= sn_m[13];
-					waddr   <= sn_m[12:0];
+					we      <= sn_m[14];
+					waddr   <= sn_m[13:0];
 					wdat    <= {sn_data, sn_data};
 					wbe     <= sn_waddr[0] ? {sn_be, 2'b00} : {2'b00, sn_be};
 					sn_take <= 1'b1;
@@ -118,7 +142,7 @@ module paprium_xwin (
 				end
 			S_RD1: st <= S_RD2;                                 // q <= ram[raddr] this clock
 			S_RD2: begin
-				mc_rdata <= rd_hit ? q : 32'd0;
+				mc_rdata <= ~rd_hit ? 32'd0 : rd_mw ? qm : q;
 				mc_ack   <= mc_req;                             // a dropped request is not acked
 				mc_done  <= mc_req;
 				st       <= S_IDLE;

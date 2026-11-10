@@ -74,3 +74,12 @@ rodata.bin
 /cpu-mate-brain/
 cf.bin
 rodata.bin
+
+# 0.3.0 firmware file. The release zip ships it as games/Paprium/little_man_firmware.bin.
+# Never commit a built firmware image; the CPU MATE brain is inside it.
+little_man_firmware.bin
+LittleMan.bin
+boot1.rom
+
+# Older versions used a paprium.pcm soundtrack. 0.3.0 doesn't. Never commit one.
+*.pcm

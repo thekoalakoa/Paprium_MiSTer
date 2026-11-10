@@ -356,6 +356,8 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL i_count : unsigned(2 DOWNTO 0);
 	SIGNAL i_hsize,i_hmin,i_hmax,i_hcpt : uint12;
 	SIGNAL i_hrsize,i_vrsize : uint12;
+	-- PASS10: line length in bursts for 2, 3 and 4 bytes per pixel, = (i_hrsize*k + N_BURST - 1) / N_BURST
+	SIGNAL i_hb2,i_hb3,i_hb4 : natural RANGE 0 TO 31;
 	SIGNAL i_himax,i_vimax : uint12;
 	SIGNAL i_vsize,i_vmaxmin,i_vmin,i_vmax,i_vcpt : uint12;
 	SIGNAL i_iauto : std_logic;
@@ -400,7 +402,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL i_divcpt : natural RANGE 0 TO 36;
 	SIGNAL i_lwad,i_lrad : natural RANGE 0 TO OHRESH-1;
 	SIGNAL i_lwr,i_bil : std_logic;
-	SIGNAL i_ldw,i_ldrm : type_pix;
+	SIGNAL i_ldw,i_ldrm,i_ldrm0 : type_pix;
 	SIGNAL i_hpixp,i_hpix0,i_hpix1,i_hpix2,i_hpix3,i_hpix4 : type_pix;
 	SIGNAL i_hpix,i_pix : type_pix;
 	SIGNAL i_hnp1,i_hnp2,i_hnp3,i_hnp4 : std_logic;
@@ -460,6 +462,9 @@ ARCHITECTURE rtl OF ascal IS
 	ATTRIBUTE ramstyle of pal1_mem : signal is "no_rw_check";
 	ATTRIBUTE ramstyle of pal2_mem : signal is "no_rw_check";
 	SIGNAL o_htotal,o_hsstart,o_hsend : uint12;
+	-- PASS10: o_htotal-1 and o_vtotal-1 (mod 4096) and their zero flags, loaded on the same edge as o_htotal/o_vtotal
+	SIGNAL o_htm1,o_vtm1 : uint12;
+	SIGNAL o_htz,o_vtz : boolean;
 	SIGNAL o_hmin,o_hmax,o_hdisp,o_v_hmin_adj : uint12;
 	SIGNAL o_hsize,o_vsize : uint12;
 	SIGNAL o_vtotal,o_vsstart,o_vsend : uint12;
@@ -1294,12 +1299,13 @@ BEGIN
 				END IF;
 				i_hdmax<=i_himax;
 
+				-- PASS10: same values; the three sizes are computed below in unsigned arithmetic (no signed-divide fixup)
 				IF i_format="00" OR i_format="11" THEN -- 16bpp
-					i_hburst<=(i_hrsize*2 + N_BURST - 1) / N_BURST;
+					i_hburst<=i_hb2; -- (i_hrsize*2 + N_BURST - 1) / N_BURST
 				ELSIF i_format="01" THEN -- 24bpp
-					i_hburst<=(i_hrsize*3 + N_BURST - 1) / N_BURST;
+					i_hburst<=i_hb3; -- (i_hrsize*3 + N_BURST - 1) / N_BURST
 				ELSE -- 32bpp
-					i_hburst<=(i_hrsize*4 + N_BURST - 1) / N_BURST;
+					i_hburst<=i_hb4; -- (i_hrsize*4 + N_BURST - 1) / N_BURST
 				END IF;
 				----------------------------------------------------
 				i_mode<=mode; -- <ASYNC>
@@ -1507,7 +1513,8 @@ BEGIN
 			END IF;
 			i_ldw<=i_hpix;
 
-			IF i_hnp3='1' AND i_ven4='1' AND i_pce='1' THEN
+			-- TC030: read pointer advanced one pce stage (hnp2/ven3, was hnp3/ven4) to match the extra i_ldrm register
+			IF i_hnp2='1' AND i_ven3='1' AND i_pce='1' THEN
 				i_lrad<=(i_lrad+1) MOD OHRESH;
 			END IF;
 
@@ -1598,6 +1605,18 @@ BEGIN
 
 	-- If downscaling, export to the output part the downscaled size
 	i_hrsize<=i_hsize WHEN i_hdown='0' ELSE i_ohsize;
+
+	-- PASS10: (i_hrsize*k + N_BURST - 1) / N_BURST for k = 2, 3, 4. All operands are non-negative and N_BURST is a power
+	-- of two, so the division is a right shift; written in unsigned so the integer division's sign correction (two extra
+	-- carry chains on the i_ohsize -> i_hburst path) is not built. 15 bits hold 4*4095 + N_BURST - 1 for N_BURST <= 8192.
+	ASSERT 2**ilog2(N_BURST)=N_BURST AND N_BURST<=8192 REPORT "N_BURST" SEVERITY failure;
+	i_hb2<=to_integer(shift_right(resize(to_unsigned(i_hrsize,12) & '0',15) +
+	                              to_unsigned(N_BURST-1,15),ilog2(N_BURST)));
+	i_hb3<=to_integer(shift_right(resize(to_unsigned(i_hrsize,12),15) +
+	                              resize(to_unsigned(i_hrsize,12) & '0',15) +
+	                              to_unsigned(N_BURST-1,15),ilog2(N_BURST)));
+	i_hb4<=to_integer(shift_right(resize(to_unsigned(i_hrsize,12) & "00",15) +
+	                              to_unsigned(N_BURST-1,15),ilog2(N_BURST)));
 	i_vrsize<=i_vsize WHEN i_vdown='0' ELSE i_ovsize;
 
 	-----------------------------------------------------------------------------
@@ -1662,7 +1681,8 @@ BEGIN
 					i_mem(i_lwad MOD IHRES)<=i_ldw;
 				END IF;
 				IF i_pce='1' THEN
-					i_ldrm<=i_mem(i_lrad MOD IHRES);
+					i_ldrm0<=i_mem(i_lrad MOD IHRES); -- TC030: M10K read, then
+					i_ldrm<=i_ldrm0;                  -- one pipeline register (read issued one pce earlier)
 				END IF;
 			END IF;
 		END PROCESS ILBUF;
@@ -1886,6 +1906,8 @@ BEGIN
 			o_run    <=run; -- <ASYNC> ?
 
 			o_htotal <=htotal; -- <ASYNC> ?
+			o_htm1   <=(htotal+4095) MOD 4096; -- PASS10: = o_htotal-1 mod 4096 on every cycle
+			o_htz    <=(htotal=0);
 			o_hsstart<=hsstart; -- <ASYNC> ?
 			o_hsend  <=hsend; -- <ASYNC> ?
 			o_hdisp  <=hdisp; -- <ASYNC> ?
@@ -1893,6 +1915,8 @@ BEGIN
 			o_hmax   <=hmax; -- <ASYNC> ?
 
 			o_vtotal <=vtotal; -- <ASYNC> ?
+			o_vtm1   <=(vtotal+4095) MOD 4096; -- PASS10: = o_vtotal-1 mod 4096 on every cycle
+			o_vtz    <=(vtotal=0);
 			o_vsstart<=vsstart; -- <ASYNC> ?
 			o_vsend  <=vsend; -- <ASYNC> ?
 			o_vdisp  <=vdisp; -- <ASYNC> ?
@@ -2760,7 +2784,8 @@ BEGIN
 
 			IF o_ce='1' THEN
 				-- Output pixels count
-				IF o_hcpt+1<o_htotal THEN
+				-- PASS10: o_hcpt+1<o_htotal, without the adder in front of the compare (o_hcpt, o_htotal in 0..4095)
+				IF NOT o_htz AND o_hcpt<o_htm1 THEN
 					o_hcpt<=(o_hcpt+1) MOD 4096;
 				ELSE
 					o_hcpt<=0;
@@ -2769,7 +2794,8 @@ BEGIN
 						o_vcpt_sync <= o_vcpt_sync+1;
 					END IF;
 
-					IF o_vcpt_pre3+1>=o_vtotal THEN
+					-- PASS10: o_vcpt_pre3+1>=o_vtotal, same rewrite
+					IF o_vtz OR o_vcpt_pre3>=o_vtm1 THEN
 						o_vcpt_pre3<=0;
 					ELSIF o_vrr_sync2 THEN
 						o_vcpt_pre3<=o_vsstart;

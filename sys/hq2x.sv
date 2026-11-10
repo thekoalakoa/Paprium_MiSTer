@@ -278,6 +278,13 @@ module DiffCheck
 	wire [7:0] r = rgb1[7:1]   - rgb2[7:1];
 	wire [7:0] g = rgb1[15:9]  - rgb2[15:9];
 	wire [7:0] b = rgb1[23:17] - rgb2[23:17];
+	DiffCheckYuv yuv(r, g, b, result);
+
+endmodule
+
+// Same thresholds as DiffCheck, separated at the RGB-difference boundary so
+// Blend can move the subtractors before its existing first pipeline stage.
+module DiffCheckYuv(input [7:0] r, g, b, output result);
 	wire [8:0] t = $signed(r) + $signed(b);
 	wire [9:0] y = $signed(t) + $signed({g[7], g});
 	wire [8:0] u = $signed(r) - $signed(b);
@@ -318,14 +325,21 @@ module Blend
 
 	reg [23:0] a,b,d,e,h,f;
 	reg  [3:0] bl_rule;
-	reg  [1:0] df_rule;
+	// Keep this arithmetic cut: retiming it back through the RGB subtractors
+	// recreates the measured cold-corner DiffCheck -> i30/op0 path.
+	(* preserve *) reg [7:0] diff_r, diff_g, diff_b;
+	wire [23:0] diff_rgb1 = rule[1] ? B : H;
+	wire [23:0] diff_rgb2 = rule[0] ? D : F;
 	always @(posedge clk) if (clk_en) begin
-		{bl_rule,df_rule} <= rule;
+		bl_rule <= rule[5:2];
+		diff_r <= diff_rgb1[7:1]   - diff_rgb2[7:1];
+		diff_g <= diff_rgb1[15:9]  - diff_rgb2[15:9];
+		diff_b <= diff_rgb1[23:17] - diff_rgb2[23:17];
 		a <= A; b <= B; d <= D; e <= E; f <= F; h <= H;
 	end
 
 	wire is_diff;
-	DiffCheck diff_checker(df_rule[1] ? b : h, df_rule[0] ? d : f, is_diff);
+	DiffCheckYuv diff_checker(diff_r, diff_g, diff_b, is_diff);
 
 	reg [23:0] i10,i20,i30;
 	reg  [6:0] op0;

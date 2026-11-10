@@ -3,6 +3,8 @@
 // stub (reads and writes), as the MiSTer port did, so a non-Paprium cart never sees them; (2) the TMSS-lite part
 // is NOT gated by active (MegaDrive.sv drives tmss_on): a TMSS console (version nibble 1) needs the $A14000 DTACK for
 // every cart, as on the real console. LaserActive answers $40014A = 0000 and Unknown CD gives no buddy, as on the Pocket.
+// Copyright (C) 2026 Marsupial Solutions LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
 // pocket: 32X Mode and the Mega CD list (0.2.6) - detection stubs, no add-on hardware.
 //
 // Paprium checks for a 32X and a Mega CD at boot. A 32X turns some throwables into
@@ -240,6 +242,7 @@ endmodule
 //    5 Nomad                   USA     1+TMSS   0x400            no               4
 //    6 Mega Jet                JP      1+TMSS   0x600            no               5
 //    7 Unknown                 JP      0        bit 6            yes              F
+//    8 TeraDrive (0.3.0 F3)    JP      0        -                yes (Q5)         B
 //
 //   megacd (OSD value)        region
 //    0 None                    console's
@@ -254,24 +257,45 @@ endmodule
 //    8 Unknown CD              console's        separate unit
 //    9-15                      = None
 //
-// Hardware rules: a combined unit (1, 4-7) is the console: the version nibble is 0 and the $1FE4
-// model bits are 0 (the game skips the console tests for codes 6-A anyway); its region is its own
-// (Aiwa, Wondermega JP; CDX USA) or, for a unit sold in both regions (Wondermega M2 / X'Eye,
-// LaserActive), the Console list's region. A console with no expansion port (Genesis 3, Nomad,
-// Mega Jet) cannot take a separate Mega CD (2, 3, 8), which is then off. 32X is left alone. cd_real
-// (= the buddy's Mega CD Mode) is any unit the game recognises; None and Unknown CD give 0. disk_n is
-// the version register's DISK bit (0 = unit on).
+// Hardware rules: a combined unit (1, 4-7) is the console: its version nibble and TMSS come from the
+// unit (table below) and the $1FE4 model bits are 0 (the game skips the console tests for codes 6-A
+// anyway); its region is its own (Aiwa, Wondermega JP; CDX USA) or, for a unit sold in both regions
+// (Wondermega M2 / X'Eye, LaserActive), the Console list's region. A console with no expansion port
+// (Genesis 3, Nomad, Mega Jet) cannot take a separate Mega CD (2, 3, 8), which is then off. 32X is
+// left alone. cd_real (= the buddy's Mega CD Mode) is any unit the game recognises; None and Unknown
+// CD give 0. disk_n is the version register's DISK bit (0 = unit on).
+//
+// 0.3.0 (F3): TeraDrive (Console 8), B Jam's menu entry. The game tells a TeraDrive by its 128 KB of VRAM ($BC81C,
+// only reached with version 0 and no combined unit) and then by 8 KB of Z80 RAM (code B, which this core has). td_en
+// switches md_board's vram_td_stub on, the only part that answers that test; everything else is a Japanese Model 1
+// (version 0, no $1FE4 model bits). A separate Mega CD unit is allowed with it (Q5: whether a real TeraDrive takes one
+// is NOT ESTABLISHED); a combined unit is the console, so it turns the stub off.
+//
+// 0.3.0 (F5): TMSS per combined unit. 0.2.6 gave every combined unit version 0 (no TMSS). B Jam
+// (2026-10-11): every all-in-one unit shows the TMSS licence screen, the CDX included, and the CDX
+// is set exactly like the others. So every combined unit reports version 1 and the core answers
+// the TMSS check itself with the stand-in (tmss_on in paprium_addons), as on a Mega Drive 2: no
+// licence screen, no BIOS file, the game boots straight in.
+//   unit                    version / TMSS   source
+//    1 Aiwa CSD-GM1          1                B Jam, 2026-10-11 (every all-in-one unit)
+//    4 Wondermega            1                B Jam, 2026-10-11
+//    5 Wondermega M2 / X'Eye 1                B Jam, 2026-10-11
+//    6 LaserActive           1                B Jam, 2026-10-11
+//    7 CDX                   1                B Jam's CDX, 2026-10-11
+// The game reads it at boot ($BC944: version nibble 1 -> the TMSS probe $BC6BC sees the stand-in,
+// then the unit's own code), so a change needs a reset like every other option here.
 module paprium_opts
 (
 	input            clk,
-	input      [2:0] console,
+	input      [3:0] console,         // 0.3.0 F3: 4 bits, 8 = TeraDrive
 	input      [3:0] megacd,
 	output reg       jap     = 1'b1,  // version register bit 7 = ~jap
 	output reg       ver1    = 1'b0,  // version nibble 1, and TMSS-lite on
 	output reg [3:0] model   = 4'd0,  // {$1FE4 bit 10, 9, 8, 6} for the cart MCU
 	output reg [3:0] cd_unit = 4'd0,  // effective unit for paprium_addons
 	output reg       disk_n  = 1'b1,
-	output reg       cd_real = 1'b0
+	output reg       cd_real = 1'b0,
+	output reg       td_en   = 1'b0   // 0.3.0 F3: the TeraDrive stub (Console 8, no combined unit)
 );
 
 reg       c_jap, c_ver1, c_noexp;
@@ -279,13 +303,14 @@ reg [3:0] c_model;
 always @(*) begin
 	{c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b0, 4'b0000, 1'b0};
 	case (console)
-		3'd1: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b0, 4'b0000, 1'b0};
-		3'd2: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b1, 4'b1110, 1'b0};
-		3'd3: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b1110, 1'b0};
-		3'd4: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b0000, 1'b1};
-		3'd5: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b1000, 1'b1};
-		3'd6: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b1, 4'b1100, 1'b1};
-		3'd7: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b0, 4'b0001, 1'b0};
+		4'd1: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b0, 4'b0000, 1'b0};
+		4'd2: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b1, 4'b1110, 1'b0};
+		4'd3: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b1110, 1'b0};
+		4'd4: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b0000, 1'b1};
+		4'd5: {c_jap, c_ver1, c_model, c_noexp} = {1'b0, 1'b1, 4'b1000, 1'b1};
+		4'd6: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b1, 4'b1100, 1'b1};
+		4'd7: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b0, 4'b0001, 1'b0};
+		4'd8: {c_jap, c_ver1, c_model, c_noexp} = {1'b1, 1'b0, 4'b0000, 1'b0};   // 0.3.0 F3: TeraDrive
 		default: ;
 	endcase
 end
@@ -294,16 +319,18 @@ wire [3:0] u        = (megacd > 4'd8) ? 4'd0 : megacd;
 wire       separate = (u == 4'd2) | (u == 4'd3) | (u == 4'd8);
 wire [3:0] unit     = (separate & c_noexp) ? 4'd0 : u;
 wire       combined = (unit == 4'd1) | ((unit >= 4'd4) & (unit <= 4'd7));
+wire       u_tmss   = combined;             // 0.3.0 F5: every combined unit reports TMSS; see above
 
 always @(posedge clk) begin
 	// region: Aiwa and Wondermega are Japanese only, CDX is American only; every other unit
 	// (Wondermega M2 / X'Eye, LaserActive, a separate unit, none) follows the Console list
 	jap     <= (unit == 4'd7) ? 1'b0 : ((unit == 4'd1) | (unit == 4'd4)) ? 1'b1 : c_jap;
-	ver1    <= ~combined & c_ver1;
+	ver1    <= combined ? u_tmss : c_ver1;
 	model   <= combined ? 4'd0 : c_model;
 	cd_unit <= unit;
 	disk_n  <= (unit == 4'd0);
 	cd_real <= (unit != 4'd0) & (unit != 4'd8);
+	td_en   <= (console == 4'd8) & ~combined;
 end
 
 endmodule

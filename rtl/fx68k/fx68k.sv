@@ -154,6 +154,7 @@ module fx68k(
 	output FC0, output FC1, output FC2,
 	output BGn,
 	output oRESETn, output oHALTEDn,
+	output oResetNx,		// PASS10: next-cycle value of the oReset flop (for an exact registered copy outside)
 	input DTACKn, input VPAn,
 	input BERRn,
 	input BRn, BGACKn,
@@ -380,6 +381,9 @@ module fx68k(
 	logic oReset, oHalted;
 	assign oRESETn = !oReset;
 	assign oHALTEDn = !oHalted;
+	// PASS10: the D input of oReset, written out so the wrapper can keep an exact copy of
+	// (oReset | pwrUp | fx_hold) in one flop. Same priority as the always_ff below.
+	assign oResetNx = Clks.pwrUp ? 1'b0 : (enT1 ? ((uFc == 2'b01) & !Nanod.permStart) : oReset);
 	
 	// FC without permStart is special, either reset or halt
 	always_ff @( posedge Clks.clk) begin

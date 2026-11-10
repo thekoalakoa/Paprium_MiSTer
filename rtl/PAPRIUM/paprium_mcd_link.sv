@@ -1,3 +1,5 @@
+// Copyright (C) 2026 Marsupial Solutions LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
 // pocket: paprium_mcd_link - the hook-free CPU MATE's Mega CD side (xram stage 2, option D; TEST FIT,
 // not shipping). Sits beside paprium_addons on clk_md_107_39, the 68000's own clock (md_board MCLK2),
 // so every release instant is exact to one 9.3 ns clock. It never drives DTACK and changes no bus
@@ -14,7 +16,10 @@
 //            A post is taken only while the sub runs (SRES = 1), as the real sub could not see it.
 //  timer     sub cycles since the post: the 12.5 MHz sub clock with W = 0, made exactly from this
 //            clock: +250,000 per clock, one tick per 2,147,727 (107.386 MHz x 250,000 / 2,147,727 =
-//            12.5 MHz exactly; gate_nb 3.1). Its origin is T0 = F - 1 + HOLD clocks, phase 0 there.
+//            12.5 MHz exactly; gate_nb 3.1). pocket: stage 1 (M6) - the divisor is CLK_MD_HZ / 50
+//            rounded (core_top's parameter), because the real Mega CD's sub clock is its own crystal:
+//            NTSC 2,147,727 as before, PAL 2,128,137 (12.5 MHz within 0.1 ppm). HOLD stays in clk_md
+//            clocks (a firmware value). Its origin is T0 = F - 1 + HOLD clocks, phase 0 there.
 //            tick >= D is first true at edge T0 + ceil(D x 8.5909); the release flop changes one
 //            clock later. HOLD (LCTRL[15:8], xlink) moves the origin so that the release lands on
 //            (A)'s instant: (A) counts from the end of the post's write bus cycle and samples at the
@@ -46,6 +51,9 @@
 // the MCU), NOT md_reset. The stub's own registers keep md_reset.
 
 module paprium_mcd_link
+#(
+	parameter integer CLK_MD_HZ = 0               // clk's frequency in Hz (core_top's CLK_MD_HZ)
+)
 (
 	input  wire        clk,                       // clk_md_107_39
 	input  wire        reset,                     // shell_reset (cartridge reset)
@@ -81,8 +89,16 @@ module paprium_mcd_link
 );
 
 	localparam [21:0] INC = 22'd250000;
-	localparam [21:0] DIV = 22'd2147727;
+	localparam integer DIV_I = (CLK_MD_HZ + 25) / 50; // INC / DIV = 12.5 MHz / CLK_MD_HZ, rounded
+	localparam [21:0] DIV = DIV_I[21:0];
 	localparam [21:0] DMI = DIV - INC;           // acc + INC >= DIV  <=>  acc >= DMI
+
+	// synthesis translate_off
+	initial begin
+		if (CLK_MD_HZ <= 0 || DIV_I > 22'h3FFFFF || DIV_I <= 250000)
+			$fatal(1, "paprium_mcd_link: CLK_MD_HZ = %0d is unset or out of range", CLK_MD_HZ);
+	end
+	// synthesis translate_on
 
 	wire [23:0] a      = {cart_addr, 1'b0};
 	wire        gate   = (a[23:6] == 18'h28480);  // $A12000-$A1203F

@@ -683,6 +683,17 @@ text of which appears above, with the single exception of VM2413 described
 below. Components licensed under GPL-2.0-or-later are used under the "or any
 later version" option of their licences.
 
+Copyright (C) 2026 Marsupial Solutions LLC, for the changes made in this
+repository and for the cartridge firmware. The projects it's built on keep
+their own copyright. A shorter list, with the full licence texts, is in
+THIRD_PARTY_NOTICES.md.
+
+Starting with 0.3.0, the cart's chip runs our own firmware, Little-Man
+Firmware. Our team wrote it from our own study of how the cart behaves. It is
+GPL-3.0-or-later. On MiSTer it ships as games/Paprium/little_man_firmware.bin, and
+Paprium.mgl loads it. The source is in the Pocket repository's firmware/
+folder. It isn't signed and it isn't encrypted.
+
 Third-party components keep their own notices and licence files:
 
 - Nuked-MD-FPGA (rtl/nuked-md/), Copyright (C) 2023 nukeykt:
@@ -703,29 +714,32 @@ Third-party components keep their own notices and licence files:
   BSD-3-Clause. See rtl/PAPRIUM/risc-v/LICENSE.
 
 - mega-ppm (https://github.com/krikzz/mega-ppm), Copyright (c) 2025, krikzz:
-  BSD-3-Clause. Covers the mega-ppm-derived cartridge files in rtl/PAPRIUM/
-  (audio_sfx.sv, fpgio.sv, mcu_core.sv, memory.sv, ramdp_io.sv, structs.sv),
-  the MCU firmware init files built by scripts/build_mcu.sh, and the firmware code modified
-  by patches/mega-ppm-pocket.patch. Its licence text follows:
+  BSD-3-Clause. It covers the mega-ppm-derived cartridge files in rtl/PAPRIUM/
+  (fpgio.sv, mcu_core.sv, memory.sv, ramdp_io.sv, structs.sv, and
+  audio_sfx.sv / audio_clock.sv, which stay in the repository but aren't
+  built into the 0.3.0 bitstream). The 0.2.6 MCU firmware built with
+  patches/mega-ppm-pocket.patch is history, kept in patches/. This release's
+  firmware file still carries some code from that work. Its licence text
+  follows:
 
     BSD 3-Clause License
-    
+
     Copyright (c) 2025, krikzz
-    
+
     Redistribution and use in source and binary forms, with or without
     modification, are permitted provided that the following conditions are met:
-    
+
     1. Redistributions of source code must retain the above copyright notice, this
        list of conditions and the following disclaimer.
-    
+
     2. Redistributions in binary form must reproduce the above copyright notice,
        this list of conditions and the following disclaimer in the documentation
        and/or other materials provided with the distribution.
-    
+
     3. Neither the name of the copyright holder nor the names of its
        contributors may be used to endorse or promote products derived from
        this software without specific prior written permission.
-    
+
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
     AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
     IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -736,6 +750,22 @@ Third-party components keep their own notices and licence files:
     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+- WavPack "tiny decoder" (WavPack 4.0, Conifer Software), as the Rockbox
+  project carries it: BSD (Conifer Software's licence). It is linked into
+  Little-Man Firmware and unpacks the game's sound bank from your own copy of
+  the game. The full notice is in THIRD_PARTY_NOTICES.md.
+
+- newlib (xPack RISC-V GCC toolchain): memcpy and memset only, FreeBSD
+  License (BSD-2-Clause). Linked into Little-Man Firmware. The full notice is
+  in THIRD_PARTY_NOTICES.md.
+
+Our own changes to mega-ppm and to the cartridge files are GPLv3-or-later,
+like the rest of this core.
+
+The CPU MATE brain, which rides inside the firmware file, is a
+reverse-engineered emulation of the game's CPU partner. It isn't a
+third-party open-source component, and none of these notices covers it.
 
 EXCEPTION: VM2413
 - VM2413 (rtl/VM2413/), Copyright (c) 2006 Mitsutaka Okazaki, is distributed
