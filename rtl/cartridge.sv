@@ -218,11 +218,24 @@ reg [26:0] cart_wr_addr;
 reg        fw_len_ok_q = 1'b0;
 assign     fw_len_bad = ~fw_len_ok_q & ~fw_done;
 
+// 0.3.1 wait watchdog. cart_dl_wait is hps_io's ioctl_wait, and sys_top only acknowledges an HPS word while it is low:
+// a wait that never clears stops every HPS-to-core transfer (OSD, file loads, saves) and MiSTer Main has no timeout,
+// so the whole MiSTer looks dead. A word normally takes well under 1 us of SDRAM time; if one is still waiting after
+// 2^17 clk cycles (about 2.4 ms at 53.69 MHz) the wait is released anyway, so the HPS can never be held for good.
+// Normal loads never reach it (the counter restarts on every word). Last resort only: if it ever fires, one word may
+// be lost (a picture or sound glitch) instead of a dead MiSTer.
+reg [16:0] dl_wait_cnt = 17'd0;
+wire       dl_wait_to  = &dl_wait_cnt;
+
 always @(posedge clk) begin
 	reg old_dl, old_reset;
 
+	if (~cart_dl_wait | dl_wait_to) dl_wait_cnt <= 17'd0;   // restart on each word and after a release
+	else                            dl_wait_cnt <= dl_wait_cnt + 1'd1;
+
 	old_reset <= reset;
 	if(~old_reset && reset) cart_dl_wait <= 0;
+	if(dl_wait_to) cart_dl_wait <= 0;   // 0.3.1: never hold the HPS for good (a new word below still sets it again)
 	
 	old_dl <= cart_dl;
 	if(~old_dl & cart_dl) begin

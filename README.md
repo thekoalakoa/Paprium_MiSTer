@@ -10,11 +10,11 @@ This is a Mega Drive core with Paprium's own cartridge hardware added: the proce
 
 ## Current release
 
-**0.3.0**, from the [latest release](https://github.com/thekoalakoa/Paprium_MiSTer/releases/latest): `Paprium_MiSTer_0.3.0.zip`. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, and Little-Man Firmware 1.0 in `games/Paprium/little_man_firmware.bin`.
+**0.3.1**, from the [latest release](https://github.com/thekoalakoa/Paprium_MiSTer/releases/latest): `Paprium_MiSTer_0.3.1.zip`. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, and Little-Man Firmware 1.0 in `games/Paprium/little_man_firmware.bin`.
 
 **Installation: [docs/INSTALL.md](docs/INSTALL.md)**
 
-This release mirrors [Paprium for Analogue Pocket 0.3.0](https://github.com/thekoalakoa/paprium-pocket/releases/tag/v0.3.0), adapted for MiSTer.
+This is a MiSTer update on 0.3.0, which mirrored [Paprium for Analogue Pocket 0.3.0](https://github.com/thekoalakoa/paprium-pocket/releases/tag/v0.3.0).
 
 ## What 0.3.0 is
 
@@ -29,9 +29,17 @@ Anything a player might notice that's different from the original cart is listed
 
 - A MiSTer (DE10-Nano) with an up-to-date MiSTer main binary. This release only adds Paprium files. It does not replace MiSTer Main, Linux, or other system files.
 - Your own copy of the game, named `Paprium.md`.
-- The 0.3.0 release zip, `Paprium_MiSTer_0.3.0.zip`.
+- The 0.3.1 release zip, `Paprium_MiSTer_0.3.1.zip`.
 
-You can forget the soundtrack file (`paprium.pcm`), and the `paprium.cue` next to it. 0.3.0 doesn't read either. If you might go back to 0.2.6, keep them, because 0.2.6 needs the soundtrack for music.
+You can forget the soundtrack file (`paprium.pcm`), and the `paprium.cue` next to it. From 0.3.0 on, the core doesn't read either. If you might go back to 0.2.6, keep them, because 0.2.6 needs the soundtrack for music.
+
+## What changed since 0.3.0
+
+- **Scaler filters work again.** Polyphase, adaptive and HQ2x are back, along with the other Scandoubler Fx choices.
+- **Firmware and ROM loading is more reliable.** The core waits until the firmware has actually loaded before it starts the cart. If you pick a firmware file with a `.ROM` extension from the OSD, it loads now.
+- **Timing fixes**, so the picture stays solid.
+
+The game, the music and Little-Man Firmware 1.0 are the same as in 0.3.0.
 
 ## What changed since 0.2.6
 
@@ -46,7 +54,7 @@ You can forget the soundtrack file (`paprium.pcm`), and the `paprium.cue` next t
 **How the cart behaves**
 - The sprites, the zooms, unpacking the game's data, the saves, the start-up and the cart's watchdog all work the way the cart does them.
 - Sprites get the cart's colours. Dice's afterimage outline is green like on the cart (0.2.x drew it blue), and the first level's doorway gets its colours from the cart's own rule.
-- Saves use the cart's own format, 8 KB, the size of the cart's save chip. A 0.2.x save gets converted once, the first time 0.3.0 starts. Make a copy of your save before you install (see [docs/INSTALL.md](docs/INSTALL.md)).
+- Saves use the cart's own format, 8 KB, the size of the cart's save chip. A 0.2.x save gets converted once, the first time 0.3.0 or later starts. Make a copy of your save before you install (see [docs/INSTALL.md](docs/INSTALL.md)).
 - The cart's watchdog is back. With the OSD closed, if the game stops sending its once-a-frame signal for about 4 seconds, the cart's chip halts, just like a real cart.
 
 **The OSD**
@@ -119,13 +127,13 @@ Little-Man Firmware (trademark pending) is the firmware the cart's chip runs in 
 - The release zip puts it in place already named `little_man_firmware.bin`. Paprium.mgl loads it when you launch the core. It is not auto-loaded by MiSTer by filename. See [docs/INSTALL.md](docs/INSTALL.md).
 - The core checks the file at every power-on, before the firmware starts. It isn't signed and it isn't encrypted. The check looks at its length, its version, its fixed layout and two checksums, and that's all.
 - If the file is missing, damaged, or was made for a different core version, the screen goes plain red, with no text and no sound, and the game doesn't start. Copy the file from the release again, then start the core again from Paprium.mgl.
-- The core and the firmware file go together. 0.3.0 takes Little-Man Firmware 1.0.
+- The core and the firmware file go together. 0.3.1 takes Little-Man Firmware 1.0.
 - The source is in the Pocket repo's [`firmware/`](https://github.com/thekoalakoa/paprium-pocket/tree/v0.3.0/firmware) folder, under GPL-3.0-or-later, with [THIRD_PARTY_NOTICES.md](https://github.com/thekoalakoa/paprium-pocket/blob/v0.3.0/firmware/THIRD_PARTY_NOTICES.md).
 - The **Little-Man** page in the OSD is the cheats. It has nothing to do with the firmware file.
 
 ## Known issues
 
-- **Audio & Video page:** Aspect Ratio, Scandoubler Fx, Audio Filter, FM Chip and Stereo Mix may have little or no effect, or may disturb video sync.
+- **Audio & Video page:** Audio Filter, FM Chip and Stereo Mix may still have little or no effect. Scaler filters, including polyphase, adaptive and HQ2x, are fixed in 0.3.1.
 - A first launch with no save file starts at the mini-game. That is the cart's own behaviour, not a bug. Play or skip it, then hit Reset and the game boots properly.
 
 ## Building from source

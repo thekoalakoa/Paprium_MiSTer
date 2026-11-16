@@ -8,7 +8,7 @@ On MiSTer the firmware is not built into `Paprium.rbf`. The bitstream only keeps
 games/Paprium/little_man_firmware.bin
 ```
 
-It is not auto-loaded by MiSTer by filename. That is the same firmware file, under the same name, that the Pocket core ships. The 0.3.0 release zip puts it in place already named. If the file is missing, damaged, or was made for a different core version, the screen goes plain red and the game does not start. See [INSTALL.md](../INSTALL.md).
+It is not auto-loaded by MiSTer by filename. That is the same firmware file, under the same name, that the Pocket core ships. The 0.3.1 release zip puts it in place already named. If the file is missing, damaged, or was made for a different core version, the screen goes plain red and the game does not start. See [INSTALL.md](../INSTALL.md).
 
 The firmware source is in the Pocket repository's [`firmware/`](https://github.com/thekoalakoa/paprium-pocket/tree/v0.3.0/firmware) folder, with its own design docs and `THIRD_PARTY_NOTICES.md`. To rebuild the file, follow the build steps there.
 

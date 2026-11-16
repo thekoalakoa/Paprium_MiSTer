@@ -1,19 +1,17 @@
-# Paprium for MiSTer 0.3.0
-
-This release mirrors [Paprium for Analogue Pocket 0.3.0](https://github.com/thekoalakoa/paprium-pocket/releases/tag/v0.3.0), adapted for MiSTer.
+# Paprium for MiSTer 0.3.1
 
 **Downloads**
-- `Paprium_MiSTer_0.3.0.zip`: the core. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, and Little-Man Firmware 1.0 in `games/Paprium/little_man_firmware.bin`.
+- `Paprium_MiSTer_0.3.1.zip`: the core. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, and Little-Man Firmware 1.0 in `games/Paprium/little_man_firmware.bin`.
 
-**Before you install, back up your save** (`saves/Paprium/Paprium.sav`) to your PC. On the first start we convert a 0.2.x save, once, into the cartridge's own format. Then follow [docs/INSTALL.md](https://github.com/thekoalakoa/Paprium_MiSTer/blob/main/docs/INSTALL.md).
+**Before you install, back up your save** (`saves/Paprium/Paprium.sav`) to your PC. If you are coming from 0.2.x, the first start converts a 0.2.x save, once, into the cartridge's own format. Then follow [docs/INSTALL.md](https://github.com/thekoalakoa/Paprium_MiSTer/blob/main/docs/INSTALL.md).
 
 ## The short version
 
-0.3.0 makes the core act like the real cartridge. The music is made the way the cartridge makes it, in both of the game's sound options (YM and Datenmeister), so you don't need a soundtrack file anymore. The cartridge's chip runs our own firmware, Little-Man Firmware 1.0. Our team wrote it from our own study of how the cart behaves. Each start takes longer while the core unpacks the game's sounds from your copy of the game. There is no progress bar, and no sound-cache file is kept, so this happens every time you launch the core.
+0.3.1 is a MiSTer update on 0.3.0. The scaler filters work again, including polyphase, adaptive and HQ2x. Firmware and ROM loading is more reliable. There are also timing fixes so the picture stays solid. The game, the music and Little-Man Firmware 1.0 are the same as in 0.3.0.
 
 ## Install
 
-1. Unzip `Paprium_MiSTer_0.3.0.zip` onto the SD card. It replaces `_Console/Paprium.rbf` and `_Console/Paprium.mgl`, and puts the firmware at `games/Paprium/little_man_firmware.bin`.
+1. Unzip `Paprium_MiSTer_0.3.1.zip` onto the SD card. It replaces `_Console/Paprium.rbf` and `_Console/Paprium.mgl`, and puts the firmware at `games/Paprium/little_man_firmware.bin`.
 2. Keep your `Paprium.md` where it is, in `games/Paprium/Paprium/`. No game or music is included.
 3. Launch `Paprium.mgl`. It loads the firmware first, then the game:
 
@@ -28,38 +26,15 @@ This release mirrors [Paprium for Analogue Pocket 0.3.0](https://github.com/thek
 
    The firmware is not auto-loaded by MiSTer by filename.
 
-You can delete `paprium.pcm`, and the `paprium.cue` next to it. 0.3.0 doesn't use either. If you might go back to 0.2.6, keep them, because 0.2.6 needs the soundtrack for music. If you still have a `boot1.rom` or `LittleMan.bin` in `games/Paprium/` from an earlier test build, you can delete it. A leftover `config/Paprium.s1` is only Main's memory of the old 0.2.6 soundtrack pick; 0.3.0 doesn't use it, and you can delete it too.
+You can delete `paprium.pcm`, and the `paprium.cue` next to it. From 0.3.0 on, the core doesn't use either. If you might go back to 0.2.6, keep them, because 0.2.6 needs the soundtrack for music. If you still have an old test firmware file in `games/Paprium/` under another name, you can delete it. A leftover `config/Paprium.s1` is only Main's memory of the old 0.2.6 soundtrack pick; from 0.3.0 on the core doesn't use it, and you can delete it too.
 
 **If the screen stays plain red**, Paprium.mgl couldn't load a good `little_man_firmware.bin`. Copy the file from this release into `games/Paprium/little_man_firmware.bin` and start the core again from Paprium.mgl. The game won't start until that file is right.
 
-## New
-
-- **The music, made the way the cartridge makes it.** We rebuilt the cartridge's sound chip in the core's logic, and our music player runs in the firmware the way the cartridge's does. So the music follows the game like it does on a cart: the low-health music, the sax man's cues, the Boom Box's X, Y and Z effects and the fades.
-- **Sound effects on our rebuild of the cartridge's synthesiser**, filter and echo included.
-- **Little-Man Firmware**, our own firmware for the cartridge's chip, now its own file. On MiSTer it lives at `games/Paprium/little_man_firmware.bin`, and Paprium.mgl loads it. It holds the firmware, our MegaWire code and the CPU MATE partner's brain. It's GPL-3.0-or-later, and the source is in the Pocket repo's `firmware/` folder. If the file is missing, damaged, or was made for a different core version, the screen goes plain red and the game won't start (see INSTALL).
-- **A longer start.** The core unpacks the game's sounds from your copy of the game. The screen stays black while it does that, with no progress bar. MiSTer does not keep a sound-cache file, so the unpack happens every time you launch the core.
-- **Arcade Mode is now a virtual Grand Stick III**, with Off, On, Multiplayer and Stick Only. On and Multiplayer flip the stick's ARCADE switch, so the game turns on its own arcade mode with no change to the ROM. Mode drops a coin, and like a real stick, the first coin after power-on or a reset doesn't give a credit. Stick Only is the stick with every switch off: the normal game, with Mode as the stick's Mode button. Also new: **Arcade Coins** and **Attract Only**.
-- **3-Player Mode** (Off by default): an EA 4-Way Play, for the game's three-player modes with three controllers.
-- **TeraDrive** in the Console list.
-- **Load Little-Man Firmware** in the OSD, for testing a firmware file by hand. Normal play just uses `little_man_firmware.bin`, loaded by Paprium.mgl.
-
-The CPU MATE partner, the Scum! cheats, and the console and Mega CD options from 0.2.6 are all still here. The old diagnostic rows, and the separate Console Reset, are gone. The regular **Reset** in the OSD still does a full reset, cart included, and so does the **USER** button on the MiSTer.
-
-## Changed (read this before you upgrade)
-
-- **Saves** now use the cartridge's own format: 8 KB, the size of the cart's save chip. We convert a 0.2.x save once, on the first start. We haven't tested going back to 0.2.x with a converted save, so keep a copy of your 0.2.x save.
-- **No more soundtrack file.** 0.3.0 doesn't read `paprium.pcm` or `paprium.cue`, so you can delete them (0.2.6 still needs them).
-- **The OSD is simpler.** The old diagnostic rows, and the separate Console Reset, are gone. **Reset** and the **USER** button both do a full reset.
-- **6-Button Mode** gives the game real six-button pads on controllers 1 and 2, and the game reads X, Y, Z and Mode itself.
-- **The cartridge's watchdog is back.** With the OSD closed, if the game stops sending its once-a-frame signal for about 4 seconds, the cartridge's chip halts, same as a real cart.
-- **Sprites, zooms, unpacking the game's data, saves and start-up** now work the way the cartridge does them.
-- **Sprites use the cartridge's colours.** Dice's afterimage outline is green like on the cart (0.2.x drew it blue), and the first level's doorway takes its colours from the cartridge's own rule.
-
 ## Fixed
 
-- **Hall of Fame name entry**: the highlight bar is clean with Arcade Stage or 6-Button Mode on (a 0.2.6 known issue, verified on the pass 10 hardware run).
-- **The Arcade coin** plays the game's coin sound on every press.
-- **TMSS**, the licence check later consoles run at power-on, works on every all-in-one Mega CD unit (Wondermega, Wondermega M2 / X'Eye, LaserActive, Aiwa CSD-GM1, CDX).
+- **Scaler filters work again.** Polyphase, adaptive and HQ2x are back, along with the other Scandoubler Fx choices. On 0.3.0 those filters could do little or nothing, or disturb the picture.
+- **Firmware and ROM loading is more reliable.** The core waits until the firmware has actually loaded before it starts the cart. If you pick a firmware file with a `.ROM` extension from the OSD, it loads now.
+- **Timing fixes** so the picture stays solid.
 
 ## Where we differ from the original cartridge
 
@@ -73,17 +48,17 @@ These are the differences you might notice. Each one is on purpose.
 
 ## Known issues
 
-- **Audio & Video page:** Aspect Ratio, Scandoubler Fx, Audio Filter, FM Chip and Stereo Mix may have little or no effect, or may disturb video sync.
+- **Audio & Video page:** Audio Filter, FM Chip and Stereo Mix may still have little or no effect. Scaler filters, including polyphase, adaptive and HQ2x, are fixed in 0.3.1.
 - A first launch with no save file starts at the mini-game. That is the cart's own behaviour. Hit Reset after it.
 
 ## Hashes
 
-These are the files in `Paprium_MiSTer_0.3.0.zip`. The rbf is the pass 10 build that was checked on hardware. The mgl loads `little_man_firmware.bin`. The firmware is Little-Man Firmware 1.0, the same file published with Pocket 0.3.0; the copy in the zip is the one from the card that ran that check.
+These are the files in `Paprium_MiSTer_0.3.1.zip`. The rbf is the 0.3.1 build. The mgl loads `little_man_firmware.bin`. The firmware is Little-Man Firmware 1.0, the same file published with Pocket 0.3.0 and with MiSTer 0.3.0.
 
 | file | bytes | md5 | SHA-256 |
 |---|---|---|---|
-| `Paprium_MiSTer_0.3.0.zip` | 1,836,591 | `9e59857b77f00c1b4b3eb7fb6a3a3fd2` | `41e54544f820e57309484278718e1faaa1be1ee1dad7238e4fc75106ed94e4d7` |
-| `_Console/Paprium.rbf` | 4,179,336 | `d1b2f73f029f8cf753700327d7b0ffb1` | `9e259a7e791b6f601fce3a3e914eef38f2854e1fa676bca7d59a45008d3e998a` |
+| `Paprium_MiSTer_0.3.1.zip` | 1,852,348 | `b9b88aa25c11d64125f035899e89e2ea` | `0764224a60d2192e7713237d35bccb6738fe5f74a8dd8842125761b12a5b37e3` |
+| `_Console/Paprium.rbf` | 4,181,200 | `d30776f49e6b7a64ba8cec1961ecb28a` | `a24f78b319f3750e8ca7baf19993563f4c2d2e8191bf1b3e50981400658bb857` |
 | `_Console/Paprium.mgl` | 440 | `7e7c47496937a24440202ffcc13f48ef` | `0b3ca982c5f629c997403831dff2b866dd21363f195babf166d40f8046ec67dc` |
 | `games/Paprium/little_man_firmware.bin` (Little-Man Firmware 1.0) | 262,144 | `f8cda67209d0e4d35beb077ae88fb16b` | `6fb90204322c6a5596bfb4d3a743696cbdced5744cf8d4b9f09aa9fc322873e2` |
 
@@ -111,4 +86,4 @@ The release bitstream was fitted with seed 1, which is what `MegaDrive.qsf` says
 
 ## Credits
 
-This core is a port of the [Paprium Pocket core](https://github.com/thekoalakoa/paprium-pocket): the music and sound rebuild, Little-Man Firmware, the CPU MATE, the Scum! options, the console and Mega CD options and the fixes come from it. The rest of the lineage is in the [README](https://github.com/thekoalakoa/Paprium_MiSTer#lineage).
+This core is a port of the [Paprium Pocket core](https://github.com/thekoalakoa/paprium-pocket): the music and sound rebuild, Little-Man Firmware, the CPU MATE, the Scum! options, the console and Mega CD options and the fixes come from it. 0.3.1 is a MiSTer update on that port. The rest of the lineage is in the [README](https://github.com/thekoalakoa/Paprium_MiSTer#lineage).

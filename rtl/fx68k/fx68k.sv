@@ -153,6 +153,7 @@ module fx68k(
 
 	output FC0, output FC1, output FC2,
 	output BGn,
+	output BGn_nx,			// 0.3.1: next-cycle value of the BGn flop (for an exact registered grant term outside)
 	output oRESETn, output oHALTEDn,
 	output oResetNx,		// PASS10: next-cycle value of the oReset flop (for an exact registered copy outside)
 	input DTACKn, input VPAn,
@@ -373,7 +374,7 @@ module fx68k(
 		.rDtack, .BeDebounced, .Vpai,
 		.ASn, .LDSn, .UDSn, .eRWn);
 		
-	busArbiter busArbiter( .Clks, .BRi, .BgackI, .Halti, .bgBlock, .busAvail, .BGn);
+	busArbiter busArbiter( .Clks, .BRi, .BgackI, .Halti, .bgBlock, .busAvail, .BGn, .BGn_nx);
 		
 		
 	// Output reset & halt control
@@ -2185,7 +2186,8 @@ endmodule
 module busArbiter( input s_clks Clks,
 		input BRi, BgackI, Halti, bgBlock,
 		output busAvail,
-		output logic BGn);
+		output logic BGn,
+		output BGn_nx);
 		
 	enum int unsigned { DRESET = 0, DIDLE, D1, D_BR, D_BA, D_BRA, D3, D2} dmaPhase, next;
 
@@ -2263,6 +2265,10 @@ module busArbiter( input s_clks Clks,
 			BGn <= ~rGranted;
 		
 	end
+
+	// 0.3.1: same priority as the always_ff above, so a wrapper flop loaded with this
+	// equals BGn on the next MCLK.
+	assign BGn_nx = Clks.extReset ? 1'b1 : (Clks.enPhi1 ? ~rGranted : BGn);
 			
 endmodule
 

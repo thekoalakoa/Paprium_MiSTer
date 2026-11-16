@@ -66,8 +66,14 @@ reg  prevbuf = 0;
 wire iobuf = !curbuf;
 
 wire diff0, diff1;
-DiffCheck diffcheck0(Curr1, (cyc == 0) ? Prev0 : (cyc == 1) ? Curr0 : (cyc == 2) ? Prev2 : Next1, diff0);
-DiffCheck diffcheck1(Curr1, (cyc == 0) ? Prev1 : (cyc == 1) ? Next0 : (cyc == 2) ? Curr2 : Next2, diff1);
+// 0.3.1 (timing): the second DiffCheck operands were a cyc-selected 4:1 mux of the line registers in front of the
+// subtractors (Curr1 -> pattern missed 107 MHz by 29 ps at slow -40C). cmp0 / cmp1 are now registers loaded on the
+// same ce_in edge with the value that mux will select on the NEXT ce_in: the same registers' next-state values
+// picked by cyc+1 (see the ce_in block below). Same operands on every ce_in, one LUT level shorter.
+reg [23:0] cmp0 = 24'd0, cmp1 = 24'd0;   // = (cyc==0)?Prev0:(cyc==1)?Curr0:(cyc==2)?Prev2:Next1 and
+                                         //   (cyc==0)?Prev1:(cyc==1)?Next0:(cyc==2)?Curr2:Next2
+DiffCheck diffcheck0(Curr1, cmp0, diff0);
+DiffCheck diffcheck1(Curr1, cmp1, diff1);
 
 wire [7:0] new_pattern = {diff1, diff0, pattern[7:2]};
 
@@ -188,6 +194,15 @@ always @(posedge clk) begin
 			end
 		end
 
+		// 0.3.1: next ce_in's DiffCheck operands (cyc+1), from this edge's next-state values
+		case(cyc)
+			0: begin cmp0 <= Curr0; cmp1 <= Next0; end                                   // cyc 1: Curr0, Next0
+			1: begin cmp0 <= (~&offs) ? Curr20 : Prev2;                                   // cyc 2: Prev2, Curr2
+			         cmp1 <= (~&offs) ? Curr21 : Curr2; end
+			2: begin cmp0 <= Next1; cmp1 <= Next2; end                                   // cyc 3: Next1, Next2
+			3: begin cmp0 <= Prev1; cmp1 <= Prev2; end                                   // cyc 0: Prev0, Prev1 after the shift
+		endcase
+
 		pattern <= new_pattern;
 		if(cyc==3) begin
 			nextpatt <= {new_pattern[7:6], new_pattern[3], new_pattern[5], new_pattern[2], new_pattern[4], new_pattern[1:0]};
@@ -209,6 +224,7 @@ always @(posedge clk) begin
 			curbuf <= ~curbuf;
 			prevbuf <= curbuf;
 			{Prev0, Prev1, Prev2, Curr0, Curr1, Curr2, Next0, Next1, Next2} <= '0;
+			{cmp0, cmp1} <= '0;   // 0.3.1: cyc 0 reads Prev0 / Prev1, both cleared here
 			if(old_reset_frame & ~reset_frame) begin
 				curbuf <= 0;
 				prevbuf <= 0;

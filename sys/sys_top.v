@@ -726,11 +726,9 @@ wire         bob_deint;
 			.PALETTE2("false"),
 		`endif
 	`endif
-		// ascal-downscale-restore diet (HDMI-safe) — unconditional so QSF can't drop
-		.OHRES(2048),
-		.MASK(8'h07),
+	`ifdef MISTER_DISABLE_ADAPTIVE
 		.ADAPTIVE("false"),
-		.DOWNSCALE("true"),
+	`endif
 	`ifdef MISTER_DOWNSCALE_NN
 		.DOWNSCALE_NN("true"),
 	`endif

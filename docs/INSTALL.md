@@ -1,4 +1,4 @@
-# Paprium for MiSTer: installation (0.3.0)
+# Paprium for MiSTer: installation (0.3.1)
 
 This is a standalone MiSTer core for **Paprium** (WaterMelon). It is a Mega Drive core with Paprium's cartridge hardware added, ported from the [Analogue Pocket Paprium core](https://github.com/thekoalakoa/paprium-pocket).
 
@@ -12,9 +12,9 @@ This release only adds Paprium files (`Paprium.rbf`, `Paprium.mgl`, and the firm
 
 - A MiSTer (DE10-Nano) with an up-to-date MiSTer main binary.
 - Your own copy of the game, named `Paprium.md`.
-- The 0.3.0 download from the [release page](https://github.com/thekoalakoa/Paprium_MiSTer/releases/latest): **`Paprium_MiSTer_0.3.0.zip`**.
+- The 0.3.1 download from the [release page](https://github.com/thekoalakoa/Paprium_MiSTer/releases/latest): **`Paprium_MiSTer_0.3.1.zip`**.
 
-You can forget the soundtrack file `paprium.pcm`, and the `paprium.cue` next to it. 0.3.0 doesn't read either.
+You can forget the soundtrack file `paprium.pcm`, and the `paprium.cue` next to it. From 0.3.0 on, the core doesn't read either.
 
 ---
 
@@ -26,14 +26,14 @@ First, copy your save to your PC:
 saves/Paprium/Paprium.sav
 ```
 
-That's your game progress. The first time 0.3.0 starts, it converts a 0.2.x save once into the cart's own format (see [First start](#first-start)). Going back to 0.2.6 with a converted save hasn't been tested, so hang on to that copy until you're sure you're staying on 0.3.0.
+That's your game progress. The first time 0.3.0 or later starts, it converts a 0.2.x save once into the cart's own format (see [First start](#first-start)). Going back to 0.2.6 with a converted save hasn't been tested, so hang on to that copy until you're sure you're staying on 0.3.1.
 
 ---
 
 ## Install
 
 1. **Copy your save** like above.
-2. **Unzip `Paprium_MiSTer_0.3.0.zip` onto the SD card** and merge with the folders already there. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, replacing any older copies, and puts Little-Man Firmware 1.0 at `games/Paprium/little_man_firmware.bin`.
+2. **Unzip `Paprium_MiSTer_0.3.1.zip` onto the SD card** and merge with the folders already there. It puts `Paprium.rbf` and `Paprium.mgl` in `_Console`, replacing any older copies, and puts Little-Man Firmware 1.0 at `games/Paprium/little_man_firmware.bin`.
 3. **Keep your copy of the game where it is**, named exactly this:
 
    ```
@@ -52,7 +52,7 @@ That's your game progress. The first time 0.3.0 starts, it converts a 0.2.x save
    ```
 
    It loads the firmware first, from `games/Paprium/little_man_firmware.bin`, then the game. The firmware is not auto-loaded by MiSTer by filename.
-4. **Optional: delete the old soundtrack files**, `games/Paprium/Paprium/paprium.pcm` and the `paprium.cue` next to it. 0.3.0 never touches them. If you think you might go back to 0.2.6, keep them, since 0.2.6 needs the soundtrack for music. If you still have a `boot1.rom` or `LittleMan.bin` in `games/Paprium/` from an earlier test build, you can delete it. A leftover `config/Paprium.s1` is only Main's memory of the old 0.2.6 soundtrack pick; 0.3.0 doesn't use it, and you can delete that too. 0.3.0 uses `little_man_firmware.bin`, which Paprium.mgl loads.
+4. **Optional: delete the old soundtrack files**, `games/Paprium/Paprium/paprium.pcm` and the `paprium.cue` next to it. From 0.3.0 on, the core never touches them. If you think you might go back to 0.2.6, keep them, since 0.2.6 needs the soundtrack for music. If you still have an old test firmware file in `games/Paprium/` under another name, you can delete it. A leftover `config/Paprium.s1` is only Main's memory of the old 0.2.6 soundtrack pick; from 0.3.0 on the core doesn't use it, and you can delete that too. 0.3.1 uses `little_man_firmware.bin`, which Paprium.mgl loads.
 
 Once you're done, the card should have:
 
@@ -86,7 +86,7 @@ If the screen goes **plain red**, with no text and no sound, and the game never 
 
 Here's the fix:
 
-1. Copy `little_man_firmware.bin` from the 0.3.0 release zip into `games/Paprium/`, replacing the one that's there. The name has to be exactly `little_man_firmware.bin`.
+1. Copy `little_man_firmware.bin` from the 0.3.1 release zip into `games/Paprium/`, replacing the one that's there. The name has to be exactly `little_man_firmware.bin`.
 2. Start the core again from **Paprium.mgl**.
 
 The firmware's red screen has no text at all. Don't mix it up with the game's own red "0012" screen. That one shows up on purpose when you set Arcade Coins to "Inf. Credits (0012)".
@@ -97,7 +97,7 @@ The firmware's red screen has no text at all. Don't mix it up with the game's ow
 
 The core and the firmware file have to match:
 
-- **0.3.0 takes Little-Man Firmware 1.0.** Every core release says which firmware version it takes.
+- **0.3.1 takes Little-Man Firmware 1.0.** Every core release says which firmware version it takes.
 - **A firmware-only update is just a file swap.** Replace `games/Paprium/little_man_firmware.bin` and start the core from Paprium.mgl. Each firmware release will say which core versions it runs on.
 - **A firmware file made for a different core version gets turned down** with the red screen above.
 - For testing, **Load Little-Man Firmware** in the OSD can load a file by hand. For normal play, leave `little_man_firmware.bin` where the zip put it, and launch Paprium.mgl, which loads it.
@@ -106,11 +106,11 @@ The core and the firmware file have to match:
 
 ## Going back to 0.2.6
 
-1. Put the 0.2.6 `Paprium.rbf` and `Paprium.mgl` back in `_Console` (from the 0.2.6 zip, or from the backup you made before installing 0.3.0).
-2. Put back the copy of `Paprium.sav` you made before you installed 0.3.0.
+1. Put the 0.2.6 `Paprium.rbf` and `Paprium.mgl` back in `_Console` (from the 0.2.6 zip, or from the backup you made before installing 0.3.0 or 0.3.1).
+2. Put back the copy of `Paprium.sav` you made before you installed 0.3.0 or 0.3.1.
 3. 0.2.6 still needs `paprium.pcm` for its music, same as before, in `games/Paprium/Paprium/`, and the `paprium.cue` next to it if you used one. If you kept `config/Paprium.s1`, 0.2.6 can use that to remember the soundtrack path.
 
-0.2.6 doesn't use `little_man_firmware.bin`. You can leave that file on the card. A leftover `boot1.rom` or `LittleMan.bin` from an earlier test build isn't used either, and you can delete it.
+0.2.6 doesn't use `little_man_firmware.bin`. You can leave that file on the card. An old test firmware file under another name isn't used either, and you can delete it.
 
 ---
 

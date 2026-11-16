@@ -317,7 +317,9 @@ wire cart_download = ioctl_download & (ioctl_index[4:0] == 1 || ioctl_index[4:0]
 // Neither collides with cart_download (index[4:0] 1 / 2) nor with
 // tmss_download (index 0, boot0.rom) or code_download (0xFF). The words go through cartridge.sv's fw_dl path
 // (SDRAM byte 0x0100_0000), never through cart_dl (which would clear rom_sz / quirks and parse a header).
-wire fw_download   = ioctl_download & ((ioctl_index == 8'h40) | (ioctl_index == 8'h04));
+// 0.3.1: by hand the F4 row sends 0x04 for a .BIN and 0x44 for a .ROM (the extension number is in index[7:6]); both
+// are the firmware now. 0.3.0 dropped a .ROM pick on the floor (no load, no wait), which left the game with no firmware.
+wire fw_download   = ioctl_download & ((ioctl_index == 8'h40) | (ioctl_index[5:0] == 6'h04));
 wire cart_dl_wait;
 wire ioctl_wait = cart_dl_wait; // cart ROM and firmware loads share cartridge.sv's port-0 handshake
 wire code_download = ioctl_download & &ioctl_index;
@@ -443,6 +445,8 @@ synch_3 fw_go_sync (.i(fw_go), .o(), .rise(fw_go_md), .clk(clk_md));
 reg        fw_stub   = 1'b0;
 reg        fw_done   = 1'b0;
 reg        pap_reset = 1'b0;
+reg        pap_fw_seen = 1'b0;   // clk_sys, RSTFIX (see below)
+reg        pap_fw_ever = 1'b0;   // clk_sys, 0.3.1: sticky, set when a firmware download ends (never cleared)
 wire       sys_reset_nx = (&sreset) ? 1'b1 : (sreset == 2'b00) ? 1'b0 : sys_reset;
 wire       fw_stub_nx   = ~fw_go & ~loading & (fw_stub | ~sys_reset);
 always @(posedge clk_sys) begin
@@ -451,16 +455,26 @@ always @(posedge clk_sys) begin
 	// Hold the cart (so the stub cannot run or reach GO) until the first cart ROM download has ended
 	// (fx_cart_loaded, sticky). The firmware may arrive before the ROM (ioctl 0x40 or the mgl's 0x04).
 	// From then on unchanged, so an F4 (0x04) reload reruns the stub as before.
-	pap_reset <= (sys_reset_nx & ~fw_stub_nx) | (fw_go & ~fw_done) | ~fx_cart_loaded;
+	// 0.3.1 load gate: also hold it until a firmware download has ended (pap_fw_ever), so with either load order
+	// (mgl, or by hand in the OSD: ROM first, firmware first) the stub never runs on a boot view that holds no firmware.
+	// Both flags are set when their download ends; a new load of either raises `loading`, which holds the cart anyway.
+	pap_reset <= (sys_reset_nx & ~fw_stub_nx) | (fw_go & ~fw_done) | ~fx_cart_loaded | ~pap_fw_ever;
 end
 
 // RSTFIX: Paprium 68000 hold terms (see the comment at paprium_rst_q)
-reg        pap_fw_seen = 1'b0;   // clk_sys
+// 0.3.1 load gate: pap_need_fw holds the 68000 while a Paprium ROM is in but no firmware download has ended yet
+// (ROM picked first by hand). Other ROMs never see it (paprium_active = 0). Sticky like fx_cart_loaded, so
+// a later ROM-only reload behaves as in 0.3.0.
+reg        pap_need_fw = 1'b0;   // clk_sys
+always @(posedge clk_sys) begin
+	pap_need_fw <= paprium_active & ~pap_fw_ever;
+end
 always @(posedge clk_sys) begin
 	reg       old_fw_dl = 1'b0;
 	reg [4:0] cdl_end   = 5'd0;
 	old_fw_dl <= fw_download;
 	cdl_end   <= {cdl_end[3:0], fx_cdl_fall};
+	if (old_fw_dl & ~fw_download)        pap_fw_ever <= 1'b1;
 	if (old_fw_dl & ~fw_download)        pap_fw_seen <= 1'b1;
 	else if (cdl_end[4] & ~paprium_active) pap_fw_seen <= 1'b0;   // a non-Paprium ROM was loaded after the firmware
 end
@@ -470,7 +484,7 @@ reg [16:0] pap_rel      = 17'd0;
 wire       s_reset_nx   = (paprium_cnt < 3);
 wire       pap_hold_nx  = (paprium_active & (paprium_md_reset | s_reset_nx)) | pap_pre_go_s[1];
 always @(posedge clk_md) begin
-	pap_pre_go_s <= {pap_pre_go_s[0], pap_fw_seen & ~fw_done};
+	pap_pre_go_s <= {pap_pre_go_s[0], (pap_fw_seen & ~fw_done) | pap_need_fw};
 	pap_hold_q   <= pap_hold_nx;
 	if (pap_hold_q & ~pap_hold_nx) pap_rel <= 17'h1FFFF;
 	else if (pap_rel != 17'd0)     pap_rel <= pap_rel - 1'd1;

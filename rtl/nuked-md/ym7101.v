@@ -6166,11 +6166,17 @@ module ym7101
 
 	// TC3: a shared one-hot read decode replaces the 390-load binary-index
 	// mux select seen in candidate2 STA. No register or video-cycle latency.
+	// 0.3.1: the one-hot is still (w825 == WORD), but each compare is done on
+	// l474, l475 or test_18 directly, so sl_m5 (through w821) is not in front
+	// of the equality. Same values; no added cycle.
 	(* keep *) wire [39:0] linebuffer_read_sel;
 	genvar lb_word;
 	generate for (lb_word = 0; lb_word < 40; lb_word = lb_word + 1) begin : lb_read_decode
 		localparam [5:0] WORD = lb_word;
-		assign linebuffer_read_sel[lb_word] = (linebuffer_index == WORD);
+		assign linebuffer_read_sel[lb_word] =
+			(w822 & (l474 == WORD)) |
+			(w823 & (l475 == WORD)) |
+			(w824 & (reg_test_18[5:0] == WORD));
 	end endgenerate
 	reg [55:0] linebuffer_read_word;
 	integer lb_read_i;

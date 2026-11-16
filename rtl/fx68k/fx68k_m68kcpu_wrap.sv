@@ -137,7 +137,7 @@ module fx68k_m68kcpu_wrap (
 		else dtack_d <= DTACK;
 	end
 	wire ASn, LDSn, UDSn, eRWn, VMAn;
-	wire BGn, oRESETn, oHALTEDn;
+	wire BGn, BGn_nx, oRESETn, oHALTEDn;
 	wire FC0, FC1, FC2;
 	wire [23:1] eab;
 	wire [15:0] oEdb;
@@ -160,6 +160,7 @@ module fx68k_m68kcpu_wrap (
 		.FC1(FC1),
 		.FC2(FC2),
 		.BGn(BGn),
+		.BGn_nx(BGn_nx),
 		.oRESETn(oRESETn),
 		.oHALTEDn(oHALTEDn),
 		.oResetNx(oReset_nx),
@@ -199,7 +200,15 @@ module fx68k_m68kcpu_wrap (
 	// tri-state states. Sim: 71 lost IRQs/frame -> 0; on a DMA frame 53 lost -> 0.
 	reg asn_d = 1'b1;
 	always @(posedge MCLK) asn_d <= ASn;
-	assign FC_z = ASn & asn_d & (~BGn | ~bgack_d | fx_reset_fc); // PASS10: fx_reset_fc == fx_reset
+	// 0.3.1: the grant term (~BGn | ~bgack_d | fx_rst_fc) is loaded one MCLK ahead from
+	// the next-state values of those three flops, so grant_or_q equals that term on every
+	// cycle. RESET_x_i still enters live, the same way fx_reset_fc does. Same FC_z, one
+	// LUT less between bgack_d and the board's FC / VD mux.
+	wire bgack_d_nx = fx_reset ? 1'b1 : (enPhi2 ? BGACK : bgack_d);
+	wire grant_or_nx = ~BGn_nx | ~bgack_d_nx | fx_rst_nx;
+	(* preserve *) reg grant_or_q = 1'b1; // == ~BGn | ~bgack_d | fx_rst_fc
+	always @(posedge MCLK) grant_or_q <= grant_or_nx;
+	assign FC_z = ASn & asn_d & (grant_or_q | ~RESET_x_i);
 	assign BG = BGn;
 	assign RESET_pull = ~oRESETn;
 	assign HALT_pull = ~oHALTEDn;
